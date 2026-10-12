@@ -405,6 +405,9 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
   const c = chess;
   // stats / talents the unit fights with: the chosen module's (or none — statsBase) for an elite (DESIGN §16)
   const fr = lo?.record || body;
+  // 三阶远征's third form (`_c`) is golden-CLASS too, so `isGolden` alone cannot name it: it keeps the gold frame but
+  // gets its own tag, never 精锐 (DESIGN §6.7)
+  const ace = !!(c.isAce || (typeof piece?.id === 'string' && /_c$/.test(piece.id) && piece.kind !== 'item'));
   const golden = !!(c.isGolden || piece?.golden);
   const sk = lo?.skill || body.skill || null;
   // a chosen skill the manifest has no icon for (only the default skills' icons are fetched): its slot letter
@@ -428,7 +431,7 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
       <div class="dhead__info">
         <div class="dhead__chips">
           <${TierChip} tier=${c.tier} golden=${golden} size="lg" />
-          ${golden ? html`<span class="dtag-elite">${t('精锐')}</span>` : null}
+          ${ace ? html`<span class="dtag-elite dtag-ace" data-ace="1">${t('王牌')}</span>` : golden ? html`<span class="dtag-elite">${t('精锐')}</span>` : null}
           ${piece?.kind === 'token' ? html`<span class="dtag-token">${t('召唤物')}</span>` : null}
           ${si ? html`<span class="dtag-standin" data-standin=${si.charId} title=${standInTip(si, c.name)}>${standInLabel(si)}</span>` : null}
           ${diy ? html`<span class="dtag-diy" data-diy=${c.charId || ''} title=${t('自选编队：所选技能与模组，没有特质，盟约按所属阵营分配')}>${t('自选')}</span>` : null}

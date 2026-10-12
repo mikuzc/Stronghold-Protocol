@@ -94,6 +94,9 @@
 .dhead__pos { font-size: calc(.12 * var(--t)); padding: 0 .06rem; border: 1px solid var(--line-2); color: var(--text-lo); }
 .dtag-elite, .dtag-token, .dtag-kind { font-size: calc(.13 * var(--t)); font-weight: 700; padding: .01rem .08rem; letter-spacing: .08em; }
 .dtag-elite { background: var(--gold); color: #1d1400; }
+/* 三阶远征's 王牌: golden-class like 精锐 but a form of its own — a lighter chip with a gold ring, so the two never
+   read alike (DESIGN §6.7) */
+.dtag-ace { background: #fff3cf; color: #6b4a00; box-shadow: inset 0 0 0 1px var(--gold); }
 .dtag-token { background: #a9c3d8; color: #0b1520; }
 /* 0.2.0 自选编队 / 补位: the card of a 自选 piece, of a chess fielded as its stand-in (ui/detailPanel.js ChessDetail) */
 .dtag-diy { font-size: calc(.13 * var(--t)); font-weight: 700; padding: .01rem .08rem; letter-spacing: .08em; background: var(--mint-500); color: var(--text-on-mint); }

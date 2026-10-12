@@ -313,6 +313,12 @@ function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset,
   useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = 0; }, [chess?.chessId]);
   if (!chess) return html`<aside class="lo-detail lo-detail--empty"><p class="t-dim">${t('没有符合条件的干员')}</p></aside>`;
   const opt = chessOptions(chess, golden);
+  // 三阶远征's 王牌 (DESIGN §6.7): the family's third form, previewable like the 精锐. `chessOptions(chess, ace)` builds
+  // its own options, so the 王牌 tab reads the Lv.10 skills and the level-3 module the battle unit would actually use.
+  const ace = golden?.aceChessId ? data.lookup('chess', golden.aceChessId) : null;
+  const optAce = ace ? chessOptions(chess, ace) : null;
+  const levelRec = level === 'ace' && ace ? ace : level === 'elite' && golden ? golden : chess;
+  const optView = level === 'ace' && optAce ? optAce : opt;
   const choice = effectiveChoice(entries, chess, golden);
   const changed = choice.changed || opsOf(ops, chess.charId).changed;
   const modOpt = opt.moduleOptions.find((x) => x.id === choice.module) || null;
@@ -339,28 +345,29 @@ function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset,
     <div class="lo-detail__body" ref=${bodyRef}>
       <${OperatorVoice} charId=${chess.charId} />
       <${CultivationSection} charId=${chess.charId} ops=${ops} onSet=${onOps} standIn=${notOwned} />
-      <${LoadoutGarrisons} chess=${level === 'elite' && golden ? golden : chess} m=${m} />
+      <${LoadoutGarrisons} chess=${levelRec} m=${m} />
       <section class="lo-sec">
         <header class="lo-sec__head">
           <h3>${t('技能')}<${MicroLabel}>SKILL<//></h3>
           <div class="lo-seg" role="tablist" aria-label=${t('技能等级')}>
             <button type="button" role="tab" aria-selected=${level === 'normal' ? 'true' : 'false'} class=${cx(level === 'normal' && 'is-on')} onClick=${() => setLevel('normal')}>${t('普通')} <span class="num">Lv.${lv(chess)}</span></button>
             <button type="button" role="tab" aria-selected=${level === 'elite' ? 'true' : 'false'} class=${cx(level === 'elite' && 'is-on')} disabled=${!golden} onClick=${() => setLevel('elite')}>${t('精锐')} <span class="num">Lv.${lv(golden)}</span></button>
+            <button type="button" role="tab" aria-selected=${level === 'ace' ? 'true' : 'false'} class=${cx(level === 'ace' && 'is-on')} disabled=${!ace} onClick=${() => setLevel('ace')}>${t('王牌')} <span class="num">Lv.${lv(ace)}</span></button>
           </div>
         </header>
         <div class="lo-skills" role="radiogroup" aria-label=${t('选择技能')}>
-          ${opt.skillOptions.map((s) => html`<${SkillOption} key=${s.index} m=${m} opt=${s} level=${level} on=${s.index === choice.skill}
+          ${optView.skillOptions.map((s) => html`<${SkillOption} key=${s.index} m=${m} opt=${s} level=${level === 'ace' ? 'elite' : level} on=${s.index === choice.skill}
             onPick=${(i) => onChange({ skill: i })} />`)}
         </div>
       </section>
-      <${LoadoutStats} base=${chess} golden=${golden} entries=${entries} ops=${ops} level=${statLevel} onLevel=${setStatLevel} />
+      <${LoadoutStats} base=${chess} golden=${golden} ace=${ace} entries=${entries} ops=${ops} level=${statLevel} onLevel=${setStatLevel} />
       ${golden ? html`<section class="lo-sec lo-sec--mod">
         <header class="lo-sec__head">
           <h3>${t('模组')}<${MicroLabel}>MODULE<//></h3>
-          <span class="lo-sec__note">${t('仅精锐干员装备 · 模组等级')} <b class="num">${golden.status?.equipLevel ?? 1}</b></span>
+          <span class="lo-sec__note">${t('仅精锐干员装备 · 模组等级')} <b class="num">${levelRec.status?.equipLevel ?? 1}</b></span>
         </header>
         <div class="lo-mods" role="radiogroup" aria-label=${t('选择模组')}>
-          ${opt.moduleOptions.map((mo) => html`<button key=${mo.id} type="button" role="radio" aria-checked=${mo.id === choice.module ? 'true' : 'false'}
+          ${optView.moduleOptions.map((mo) => html`<button key=${mo.id} type="button" role="radio" aria-checked=${mo.id === choice.module ? 'true' : 'false'}
               data-module=${mo.id} class=${cx('lo-mod', mo.id === choice.module && 'is-on', mo.id === MODULE_NONE && 'lo-mod--none')}
               onClick=${() => onChange({ module: mo.id })}>
             <${ModuleGlyph} m=${m} rec=${mo.rec} id=${mo.id} />
@@ -371,7 +378,7 @@ function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset,
             ${mo.isDefault ? html`<span class="lo-badge lo-badge--def lo-mod__def">${t('默认')}</span>` : null}
           </button>`)}
         </div>
-        ${modOpt ? html`<${ModuleInfo} m=${m} golden=${golden} opt=${modOpt} potential=${opsOf(ops, chess.charId).potential} />` : null}
+        ${modOpt ? html`<${ModuleInfo} m=${m} golden=${levelRec} opt=${modOpt} potential=${opsOf(ops, chess.charId).potential} />` : null}
       </section>` : null}
       ${notOwned ? html`<p class="lo-locknote lo-locknote--standin" data-testid="loadout-standin-note"><${Icon} name="info" />${standInName(chess) ? t('干员持有中标记为未持有：此棋子由替补干员 {name} 上场，技能与模组固定（补位干员技能不可更改）；这里的调配在改回「持有」后生效', { name: standInName(chess) })
         : t('干员持有中标记为未持有：此棋子由替补干员上场，技能与模组固定（补位干员技能不可更改）；这里的调配在改回「持有」后生效')}</p>` : null}

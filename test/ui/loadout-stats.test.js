@@ -223,19 +223,21 @@ test('the 普通 / 精锐 toggle: 精锐 is the shown variant, the tabs say so, 
   const tabs = (tree) => [...walk(tree)].filter((n) => n.type === 'button' && n.props.role === 'tab');
   const elite = section(INSIDE, 'elite');
   assert.equal(elite.props['data-variant'], 'elite');
-  const [tn, te] = tabs(elite);
-  assert.deepEqual([textOf(tn), textOf(te)], ['普通', '精锐']);
-  assert.deepEqual([tn.props['aria-selected'], te.props['aria-selected']], ['false', 'true']);
+  const [tn, te, ta] = tabs(elite);
+  assert.deepEqual([textOf(tn), textOf(te), textOf(ta)], ['普通', '精锐', '王牌']);
+  assert.deepEqual([tn.props['aria-selected'], te.props['aria-selected'], ta.props['aria-selected']], ['false', 'true', 'false']);
   const normal = section(INSIDE, 'normal');
   assert.equal(normal.props['data-variant'], 'normal');
-  assert.deepEqual(tabs(normal).map((t) => t.props['aria-selected']), ['true', 'false']);
+  assert.deepEqual(tabs(normal).map((t) => t.props['aria-selected']), ['true', 'false', 'false']);
   const asked = [];
   const sec = section(INSIDE, 'normal', {}, { onLevel: (l) => asked.push(l) });
-  const [bn, be] = tabs(sec);
+  const [bn, be, ba] = tabs(sec);
   be.props.onClick();
   bn.props.onClick();
   assert.deepEqual(asked, ['elite', 'normal']);
   assert.ok(!be.props.disabled && !bn.props.disabled);
+  // no `ace` record on this fixture: the 王牌 tab is there but disabled, exactly like 精锐 without an elite record
+  assert.equal(ba.props.disabled, true, '王牌 needs an ace record');
   // the caption says what the numbers are: the chosen module's in 精锐; in 普通 that modules live in 精锐
   const cap = (tree) => textOf([...walk(tree)].find((n) => hasClass(n, 'lo-stats__cap')));
   assert.match(cap(elite), /^数值含所选模组；不含技能发动、装备、盟约等局内加成$/);

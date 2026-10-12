@@ -133,6 +133,14 @@ generated modes `mode_single_expedition` / `mode_multi_expedition` add a third:
   draws that tile with `ACE_HL` — the same gold as `MERGE_HL` but as a BORDER (`fill: 0`), so the third rung reads
   differently from the ordinary 精锐 merge. Outside a `threeTier` match every one of these answers exactly as before:
   the elite is terminal.
+- **The 王牌 must never read as 精锐.** The ace is golden-CLASS (`isGolden: true`), so every client branch on `isGolden`
+  alone mislabels it. `ui/detailPanel.js` therefore detects it separately (`c.isAce`, or a `_c` piece id) and tags it
+  王牌 with its own look (`css/screens/game-panels.css .dtag-ace` — a light chip with a gold ring, next to 精锐's solid
+  gold), and 干员调配 previews it: `screens/loadout.js` builds `chessOptions(chess, ace)` for the family's third form and
+  offers a 王牌 tab in BOTH toggles (the skill-level one and 局内数值), so the tab reads the Lv.10 skills and the level-3
+  module the battle unit actually uses. `ui/loadoutStats.js statsPreview` gained an `ace` argument (a level of its own,
+  never folded into `elite`). The record is resolved through the family's loadout (`chessLoadout` keys off `baseId`), so
+  a stored skill/module choice carries over to the ace untouched.
 - **The waves.** R1–R13 are the official round data; R15+ cycle the three hardest normal templates (R11 `h04`, R12
   `h05`, R13 `h06`). `enemyScale` continues the official curve — `atk = atkBase·1.1^k`, `hp = hpBase·1.2^k·extra`, `k`
   advancing at the mean step of the official `k` array — because `gamedata.baseEnemyScale` answers 1/1 for a round with

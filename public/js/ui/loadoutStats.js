@@ -21,14 +21,16 @@ const getChessRec = (id) => data.lookup('chess', id);
  *   练度 multiplier needs effects.json; none set = 潜能 6, 精英2 Lv.60)
  * @returns {{ elite: boolean, chess: any, lo: any, record: any, trait: string, talents: any[] } | null} null without a record
  */
-export function statsPreview(base, golden, entries, level, getChess, ops = null) {
-  const elite = level === 'elite' && !!golden;
-  const chess = elite ? golden : base;
+export function statsPreview(base, golden, entries, level, getChess, ops = null, ace = null) {
+  // the 王牌 (三阶远征's third form) is a level of its own: golden-class, but NOT the 精锐 (DESIGN §6.7)
+  const aceOn = level === 'ace' && !!ace;
+  const elite = !aceOn && level === 'elite' && !!golden;
+  const chess = aceOn ? ace : elite ? golden : base;
   if (!chess) return null;
   const lo = chessLoadout(chess, entries, getChess, { ops, effects: data.get('effects') });
   const record = lo?.record || chess;
   // (the card's own rule: the 特性 line exists when the chess has one; its text follows the chosen module)
-  return { elite, chess, lo, record, trait: chess.trait?.desc ? traitText(chess, !!chess.isGolden, lo) || '' : '', talents: chessTalents(record) };
+  return { elite, ace: aceOn, chess, lo, record, trait: chess.trait?.desc ? traitText(chess, !!chess.isGolden, lo) || '' : '', talents: chessTalents(record) };
 }
 
 /**
@@ -38,16 +40,17 @@ export function statsPreview(base, golden, entries, level, getChess, ops = null)
  * toggle picks the 普通 or the 精锐 record; 精锐 is the default because the module only exists there.
  * @param {{ base: any, golden: any, entries: Record<string, any>, level: 'normal'|'elite', onLevel: (l: 'normal'|'elite') => void, getChess?: (id: string) => any }} props
  */
-export function LoadoutStats({ base, golden, entries, level, onLevel, getChess = getChessRec, ops = null }) {
-  const pv = statsPreview(base, golden, entries, level, getChess, ops);
+export function LoadoutStats({ base, golden, entries, level, onLevel, getChess = getChessRec, ops = null, ace = null }) {
+  const pv = statsPreview(base, golden, entries, level, getChess, ops, ace);
   if (!pv) return null;
   // (the caption names 潜能 / 练度 when the numbers carry both — the 练度 multiplier needs effects.json)
-  return html`<section class="lo-sec lo-sec--stats" aria-label=${t('局内数值')} data-variant=${pv.elite ? 'elite' : 'normal'}>
+  return html`<section class="lo-sec lo-sec--stats" aria-label=${t('局内数值')} data-variant=${pv.ace ? 'ace' : pv.elite ? 'elite' : 'normal'}>
     <header class="lo-sec__head">
       <h3>${t('局内数值')}<${MicroLabel}>STATS<//></h3>
       <div class="lo-seg" role="tablist" aria-label=${t('数值版本')}>
-        <button type="button" role="tab" aria-selected=${pv.elite ? 'false' : 'true'} class=${cx(!pv.elite && 'is-on')} data-variant="normal" onClick=${() => onLevel('normal')}>${t('普通')}</button>
+        <button type="button" role="tab" aria-selected=${!pv.elite && !pv.ace ? 'true' : 'false'} class=${cx(!pv.elite && !pv.ace && 'is-on')} data-variant="normal" onClick=${() => onLevel('normal')}>${t('普通')}</button>
         <button type="button" role="tab" aria-selected=${pv.elite ? 'true' : 'false'} class=${cx(pv.elite && 'is-on')} data-variant="elite" disabled=${!golden} onClick=${() => onLevel('elite')}>${t('精锐')}</button>
+        <button type="button" role="tab" aria-selected=${pv.ace ? 'true' : 'false'} class=${cx(pv.ace && 'is-on')} data-variant="ace" disabled=${!ace} onClick=${() => onLevel('ace')}>${t('王牌')}</button>
       </div>
     </header>
     ${chessStatsBlock({ rec: pv.record, chess: pv.chess })}
@@ -56,6 +59,6 @@ export function LoadoutStats({ base, golden, entries, level, onLevel, getChess =
       ${pv.talents.map((tal, i) => html`<div key=${i} class="lo-minfo__row"><span class="lo-minfo__k">${t('天赋')}</span>
         <span class="lo-minfo__v"><b class="lo-minfo__tname">${tal.name}</b><${RichText} text=${tal.descRaw || tal.desc || ''} /></span></div>`)}
     </div>` : null}
-    <p class="lo-stats__cap">${pv.elite ? t('数值含所选模组；') : golden ? t('普通干员没有模组，所选模组在「精锐」中生效；') : ''}${pv.lo?.cultivation && data.get('effects') ? t('含潜能与练度；') : ''}${t('不含技能发动、装备、盟约等局内加成')}</p>
+    <p class="lo-stats__cap">${pv.ace || pv.elite ? t('数值含所选模组；') : golden ? t('普通干员没有模组，所选模组在「精锐」中生效；') : ''}${pv.lo?.cultivation && data.get('effects') ? t('含潜能与练度；') : ''}${t('不含技能发动、装备、盟约等局内加成')}</p>
   </section>`;
 }

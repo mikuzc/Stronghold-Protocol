@@ -3,6 +3,7 @@
 // cap and the boss cadence "R14 and then every 7 rounds". Every official mode must be untouched by all of it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { EXPEDITION_CAPS } from '../../shared/constants.js';
 import { validateC2S } from '../../shared/protocol.js';
 import { mergeProgress, mergeTarget, completesMerge } from '../../public/js/ui/gameLogic/shop.js';
@@ -339,6 +340,33 @@ test('the reward and trophy tables cover the expedition, and every official row 
   // an official run still reads its own row (R14 solo 标准 walks the official 14 rows only)
   const officialRow = tr.find((r) => 14 <= r.maxRound);
   assert.equal(officialRow.maxRound, 14, 'an R14 official clear still lands on the official row');
+});
+
+test('the 王牌 is previewable, and nothing labels it 精锐 (which is what `isGolden` alone would do)', () => {
+  const elite = 'chess_char_1_02_b', ace = 'chess_char_1_02_c';
+  assert.equal(DATA.chess[elite].aceChessId, ace);
+  const a = DATA.chess[ace];
+  assert.equal(a.isAce, true);
+  assert.equal(a.isGolden, true, 'golden-CLASS — which is exactly why isGolden cannot name the form');
+  assert.equal(a.visible, false);
+  // the third form is strictly stronger than the elite it replaces (the record field is `status.level`)
+  assert.ok(a.status.level > DATA.chess[elite].status.level, `Lv${a.status.level} > Lv${DATA.chess[elite].status.level}`);
+  assert.ok(a.status.skillLevel > DATA.chess[elite].status.skillLevel, `S-Lv${a.status.skillLevel} > S-Lv${DATA.chess[elite].status.skillLevel}`);
+  assert.ok(a.status.equipLevel > DATA.chess[elite].status.equipLevel, 'module level');
+  const read = (p) => readFileSync(new URL(`../../public/js/${p}`, import.meta.url), 'utf8');
+  // the detail card must branch on isAce: a bare `isGolden` tag would read 精锐 on the 王牌
+  const panel = read('ui/detailPanel.js');
+  assert.match(panel, /const ace = !\!\(c\.isAce \|\|/, 'the card detects the ace');
+  assert.match(panel, /ace \? html`<span class="dtag-elite dtag-ace"/, 'and tags it 王牌, never 精锐');
+  assert.match(read('../css/screens/game-panels.css'), /\.dtag-ace \{[^}]*box-shadow/, 'with a look of its own');
+  // 干员调配 offers the third form: a 王牌 tab in the skill toggle AND in 局内数值, with the ace's own options
+  const lo = read('screens/loadout.js');
+  assert.match(lo, /chessOptions\(chess, ace\)/, "the ace's own skill/module options");
+  assert.match(lo, /setLevel\('ace'\)/, 'a 王牌 tab in the skill toggle');
+  assert.match(lo, /level === 'ace' \? 'elite' : level/, 'the ace reads the elite-shaped option records built from itself');
+  const stats = read('ui/loadoutStats.js');
+  assert.match(stats, /onLevel\('ace'\)/, 'a 王牌 tab in 局内数值');
+  assert.match(stats, /const aceOn = level === 'ace' && \!\!ace/, 'and it resolves the ace record');
 });
 
 test('the official mode keeps its two forms: 9 普通 give three 精锐 and never a 王牌', () => {
