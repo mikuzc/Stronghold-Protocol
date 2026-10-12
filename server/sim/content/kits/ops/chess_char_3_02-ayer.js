@@ -2,7 +2,7 @@
 // Conventions of the tier-3 kits: ../shared/tier3.js; kit contract and rules: ../README.md.
 
 import {
-  num, defOf, talentBb, traitBb, altSkills, instantKindOf, alive, gridKeys, fx, copyGrid, NINE, aura,
+  num, defOf, talentBb, traitBb, moduleTalentBb, altSkills, instantKindOf, alive, gridKeys, fx, copyGrid, NINE, aura,
 } from '../shared/tier3.js';
 
 export default {
@@ -52,7 +52,18 @@ export default {
         },
       }),
       talents: [{ install(battle, unit) {
-        aura(battle, unit, { key: 'talent:ayer_aspd', side: 'ally', tiles: () => gridKeys(tGrid, unit), filter: (a) => a.kind === 'op', mods: { aspd: num(t0.attack_speed) } });
+        // 模组3 (uniequip_002_ayer Lv3) adds 「其中阻挡敌人的友军攻速额外+5」 to 索敌援助. The +5 is the module's hidden
+        // talent (`bb.attack_speed`); the condition sentence stays on the named talent, which also raises the base to 13.
+        const base = num(t0.attack_speed);
+        const extra = num(moduleTalentBb(chess)?.attack_speed);
+        if (!extra) {
+          aura(battle, unit, { key: 'talent:ayer_aspd', side: 'ally', tiles: () => gridKeys(tGrid, unit), filter: (a) => a.kind === 'op', mods: { aspd: base } });
+          return;
+        }
+        aura(battle, unit, {
+          key: 'talent:ayer_aspd', side: 'ally', tiles: () => gridKeys(tGrid, unit), filter: (a) => a.kind === 'op',
+          mods: (a) => ({ aspd: base + (a.blocking.length ? extra : 0) }),
+        });
       } }],
     };
     if (skillGrid) kit.skill.targeting = { rangeGrid: skillGrid };

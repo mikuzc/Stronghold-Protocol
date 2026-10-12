@@ -98,6 +98,8 @@ const KIT_OWNED = [
   /存在地面敌人/,                      // MAR-Y — 空弦 3_21_b / 能天使 3_01_b (shared/tier3.js groundAspd)
   /受到元素损伤的友方单位/,            // WDM-Y — 纯烬艾雅法拉 6_20_b
   /拥有已储存的攻击能量时/,            // MSC-Y — 黑键 / 维伊 (自选 picks; ops/op-ebnhlz.js, ops/op-veen.js)
+  /叠满后/,                            // FUN-X — 洛洛 2_10_c 模组3「叠满后攻击速度+5」(ops/chess_char_2_10-rockr.js)
+  /阻挡敌人的友军/,                    // LOR-X — 断崖 3_02_c 模组3「其中阻挡敌人的友军攻速额外+5」(ops/chess_char_3_02-ayer.js)
 ];
 
 /**
@@ -146,13 +148,33 @@ function traitClauses(def) {
 function attackSpeedSources(def) {
   const out = [];
   const tb = traitBb(def?.raw ?? {});
-  if (Number.isFinite(tb.attack_speed)) out.push(tb);
+  if (Number.isFinite(tb.attack_speed)) out.push({ bb: tb, hidden: false });
   const talents = def?.raw?.talents;
   if (Array.isArray(talents)) {
     for (const t of talents) {
       if (!t || t.index !== -1 || !t.bb || !Number.isFinite(t.bb.attack_speed)) continue;
-      if (!out.includes(t.bb)) out.push(t.bb);
+      if (!out.some((s) => s.bb === t.bb)) out.push({ bb: t.bb, hidden: true });
     }
+  }
+  return out;
+}
+
+/**
+ * The texts of a module's NAMED talents (data index ≥ 0). A hidden module talent carries only the NUMBER; its condition
+ * sentence can live on the module's named talent instead of the trait — 洛洛 立于磐石 「叠满后攻击速度+5」
+ * (`uniequip_002_rockr` Lv3) and 断崖 索敌援助 「其中阻挡敌人的友军攻速额外+5」 (`uniequip_002_ayer` Lv3). Both state
+ * 「攻速」 where the trait sentences spell 「攻击速度」, so the abbreviation is normalised before the clause is read.
+ * Only consulted when the number came from a hidden talent (see traitAttackSpeedRule), so a trait-level number keeps its
+ * classification exactly.
+ */
+function moduleTalentClauses(def) {
+  const out = [];
+  const talents = def?.raw?.talents;
+  if (!Array.isArray(talents)) return out;
+  for (const t of talents) {
+    if (!t || t.index === -1) continue;
+    const p = plainText(t.descRaw ?? t.desc).trim().replace(/攻速/g, '攻击速度');
+    if (p && !out.includes(p)) out.push(p);
   }
   return out;
 }
@@ -171,9 +193,12 @@ function attackSpeedSources(def) {
 export function traitAttackSpeedRule(def) {
   const sources = attackSpeedSources(def);
   if (!sources.length) return null;
-  const value = num(sources[0].attack_speed);
+  const value = num(sources[0].bb.attack_speed);
   if (!value) return null;
-  for (const text of traitClauses(def)) {
+  // A number that came from a HIDDEN module talent may state its condition on the module's named talent (see
+  // moduleTalentClauses); a trait-level number never does, so those keep their classification byte-for-byte.
+  const texts = [...traitClauses(def), ...(sources[0].hidden ? moduleTalentClauses(def) : [])];
+  for (const text of texts) {
     const clause = conditionClause(text);
     if (!clause) continue;
     for (const match of CONDITIONS) {

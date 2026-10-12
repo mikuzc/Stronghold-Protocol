@@ -925,6 +925,41 @@ test('2_10 洛洛: 自负此轭 ASPD; 过载 half-way ATK +atk and funnel cap ×
   done(h);
 });
 
+test('2_10 洛洛 王牌(模组3): 立于磐石 叠满 4 层后再加隐藏天赋的「叠满后攻击速度+5」，未叠满时没有', () => {
+  // 模组 2/3 级新增一个 hidden talent (index −1) {attack_speed: 5}，条件句「叠满后」留在具名天赋 立于磐石 上。
+  // 数值不是具名天赋自己的（那是 atk/max_stack_cnt/interval），所以 kit 读 moduleBb；叠加层数由停留时间决定。
+  // 默认技能会自己施放（+80 攻速），所以用 A/B 对照：同一枚棋子去掉那条隐藏天赋，差值就是这条词条本身。
+  const id = 'chess_char_2_10_c', t = tal(id), full = hid(id).attack_speed;
+  assert.equal(full, 5, 'the hidden module talent carries +5 ASPD');
+  assert.equal(raw(id).status.equipLevel, 3, 'the ace carries the module at stage 3');
+  const noHidden = { [id]: { ...raw(id), talents: raw(id).talents.filter((x) => x.index !== -1) } };
+  const go = (chess, seconds) => {
+    const h = run({ defs: { enemies: { e: dummy('e') }, chess }, units: [{ chessId: id, row: 10, col: 4 }], enemies: [{ key: 'e', pos: [10, 6] }] });
+    const u = h.unit(id);
+    h.step();
+    h.runUntil(() => h.b.time >= seconds, 400);
+    const out = { aspd: u.s.aspd, stacks: u.findBuff('rockr:rock')?.stacks ?? 0, full: u.findBuff('rockr:rock-full') };
+    done(h);
+    return out;
+  };
+  // not yet full: (max_stack_cnt − 1) intervals elapsed → stacks but no +5, and the two runs agree exactly
+  const short = t.interval * (t.max_stack_cnt - 1) + 0.1;
+  const a1 = go({}, short), b1 = go(noHidden, short);
+  assert.equal(a1.stacks, t.max_stack_cnt - 1, 'one stack short of full');
+  assert.equal(a1.full, null, 'no ASPD bonus before the stacks are full');
+  assert.equal(a1.aspd, b1.aspd, 'and the hidden talent changes nothing yet');
+  // full: the +5 lands, exactly once, and the run without the hidden talent stays 5 lower
+  const a2 = go({}, short + t.interval + 0.2), b2 = go(noHidden, short + t.interval + 0.2);
+  assert.equal(a2.stacks, t.max_stack_cnt, 'stacks capped');
+  assert.ok(a2.full, 'the 叠满 buff is installed');
+  assert.equal(a2.full.stacks, 1, 'a single buff, not one per tick');
+  assert.equal(a2.aspd - b2.aspd, full, 'exactly +5 once the stacks are full');
+  assert.equal(b2.full, null, 'and nothing at all without the hidden talent');
+  // it stays +5 for good (not re-applied per tick)
+  const a3 = go({}, short + 40), b3 = go(noHidden, short + 40);
+  assert.equal(a3.aspd - b3.aspd, full, 'still exactly +5 forty seconds later');
+});
+
 test('2_11 风丸: 纸艺·双影 −50 % HP, ATK +atk, summons the <替身> whose entrance deals damage_scale × its ATK; substitution too', () => {
   const id = 'chess_char_2_11_a', bb = bbOf(id), t = tal(id);
   const h = run({ defs: { enemies: { e: dummy('e') } }, units: [{ chessId: id, row: 9, col: 5, carryState: READY }], enemies: [{ key: 'e', pos: [9, 6] }, { key: 'e', pos: [9, 9] }] });

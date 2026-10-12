@@ -331,7 +331,41 @@ test('规则解析: 仇白 LOR-Y 同文案但数值写进具名天赋 —— 引
   assert.equal(traitAttackSpeedRule(def), null, '引擎看不到 → 由 kits/ops/chess_char_6_15-qiubai.js 消费');
 });
 
-test('覆盖锁定: 全数据 266 个棋子 × 全部模组选择里，被引擎接管的只有那两条 REA-Y，其余全部显式拒绝（unknown = 0）', () => {
+test('规则解析: 模组3 的隐藏天赋 + 具名天赋上的条件句 —— 洛洛「叠满后」/ 断崖「阻挡敌人的友军」都读得到，且只在 3 级出现', () => {
+  // 模组 2/3 级把数值放进一个 HIDDEN talent (index −1)，条件句却留在具名天赋上（build-data 的 mergeTalentChanges
+  // 对 index −1 是追加，所以两句分开）。traitClauses 只读 trait 文案，会把这两条误报成 no-text；moduleTalentClauses
+  // 补上具名天赋的句子，并且只在数值来自隐藏天赋时启用（trait.bb 上的数值分类完全不变）。
+  for (const { id, moduleId, clause, source, base } of [
+    {
+      id: 'chess_char_2_10_c', moduleId: 'uniequip_002_rockr',
+      clause: '每在场上停留10秒，攻击力+5%（+1%），最多可以叠加4次，叠满后',
+      source: '每在场上停留10秒，攻击力+5%（+1%），最多可以叠加4次，叠满后攻击速度+5',
+    },
+    {
+      id: 'chess_char_3_02_c', moduleId: 'uniequip_002_ayer',
+      clause: '自身与周围8格友方干员攻击速度+13（+2），其中阻挡敌人的友军',
+      source: '自身与周围8格友方干员攻击速度+13（+2），其中阻挡敌人的友军攻击速度额外+5',
+    },
+  ]) {
+    const ace = ds.getChess(id);
+    assert.equal(ds.rawChess(id).status.equipLevel, 3, `${id}: the ace carries the module at stage 3`);
+    assert.equal(ace.raw.talents.filter((t) => t.index === -1).length, 1, `${id}: the number rides a hidden talent`);
+    assert.equal(ace.raw.talents.find((t) => t.index === -1).bb.attack_speed, 5, `${id}: +5`);
+    const rule = traitAttackSpeedRule(ace);
+    assert.equal(rule.value, 5, `${id}: +5, not the named talent's own number`);
+    assert.equal(rule.reason, 'kit', `${id}: the operator's own kit owns the condition`);
+    assert.equal(rule.condition, null, `${id}: no engine-installable condition shape`);
+    assert.equal(rule.clause, clause, `${id}: the condition sentence is read from the named talent`);
+    assert.equal(rule.source, source, `${id}: and reported with its source text`);
+    // the SAME line at stage 1 (the 精锐 _b) does not exist at all: the hidden talent is added by stage 2/3
+    const elite = ds.getChess(id.replace(/_c$/, '_b'), { moduleId });
+    assert.equal(ds.rawChess(id.replace(/_c$/, '_b')).status.equipLevel, 1, `${id}: the _b stops at stage 1`);
+    assert.deepEqual(elite.raw.talents.filter((t) => t.index === -1), [], `${id}: no hidden talent at stage 1`);
+    assert.equal(traitAttackSpeedRule(elite), null, `${id}: and therefore no rule`);
+  }
+});
+
+test('覆盖锁定: 全数据 395 个棋子 × 全部模组选择里，被引擎接管的只有那四条 REA-Y，其余全部显式拒绝（unknown = 0）', () => {
   const installed = [];
   const refused = [];
   const reasons = {};
@@ -355,12 +389,14 @@ test('覆盖锁定: 全数据 266 个棋子 × 全部模组选择里，被引擎
   assert.ok(scanned > 500, `the whole data set was scanned (${scanned} defs)`);
   assert.deepEqual(installed.sort(), [
     'chess_char_5_01_b|uniequip_003_excu2|12|ok',   // 圣约送葬人 REA-Y（数值在隐藏天赋上）
+    'chess_char_5_01_c|uniequip_003_excu2|12|ok',   // 王牌的模组同样到 3 级（与精锐 _b 同级）
     'chess_char_5_06_b|uniequip_003_etlchi|12|ok',  // 隐德来希 REA-Y（数值在 trait.bb 上）
+    'chess_char_5_06_c|uniequip_003_etlchi|12|ok',  // 同上
   ]);
   assert.deepEqual(Object.keys(reasons).sort(), ['kit', 'mode'], 'no silent gap — every refusal carries a known reason');
   assert.equal(reasons.unknown ?? 0, 0, 'nothing falls through as unknown');
   assert.ok((reasons.kit ?? 0) >= 13, `every other carrier is refused explicitly (${reasons.kit} kit)`);
-  assert.equal(reasons.mode, 1, '集成战略专用的一条（水月 ISW-A）');
+  assert.equal(reasons.mode, 2, '集成战略专用的那一条（水月 ISW-A，普通与王牌各一次）');
   assert.ok(refused.length >= 13, `refused lines (${refused.length})`);
   for (const t of refused) {
     assert.ok(/\|(kit|mode)$/.test(t), `refused with a known reason: ${t}`);

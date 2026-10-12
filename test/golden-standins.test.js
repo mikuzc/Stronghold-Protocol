@@ -14,7 +14,9 @@ const STANDINS = read('./golden/standins.json');
 const MATCHES = read('./golden/matches.json');
 const COL = Object.fromEntries(STANDINS.columns.units.map((k, i) => [k, i]));
 
-const normal = Object.values(CHESS).filter((c) => c.chessType === 'NORMAL' && c.backup && c.backup.charId !== c.charId);
+// The golden corpus pins the OFFICIAL mode, so the 王牌 (`_c`) is not part of it (tools/golden.mjs `OFFICIAL`): the
+// third form only exists when a mode switches it on. 165 = the 110 official NORMAL records + the 55 aces.
+const normal = Object.values(CHESS).filter((c) => c.chessType === 'NORMAL' && !c.isAce && c.backup && c.backup.charId !== c.charId);
 
 test('standins: every NORMAL chess record (normal + elite) is fielded once, with its backup skill, without content errors', () => {
   assert.equal(normal.length, 110);

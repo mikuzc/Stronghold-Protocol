@@ -41,6 +41,11 @@ const isInt = (v) => Number.isInteger(v);
 const isPair = (p) => Array.isArray(p) && p.length === 2 && p.every(isInt);
 const normalChess = Object.values(chess).filter((c) => !c.isGolden);
 const visible = normalChess.filter((c) => c.visible);
+/**
+ * How many forms a non-DIY base chess has: 普通 `_a`, 精锐 `_b`, and — since 0.2.5, a deliberate deviation — the 王牌
+ * `_c` (build-data.mjs injectAceForms). Counts over "every form of a chess family" scale by this.
+ */
+const FORMS = 3;
 
 /** Every number reachable in an object is finite (JSON cannot hold NaN, but null stats would slip). */
 function assertStatsFinite(stats, label, keys) {
@@ -48,13 +53,15 @@ function assertStatsFinite(stats, label, keys) {
   for (const k of keys) assert.ok(isFiniteNum(stats[k]), `${label}: stats.${k} = ${stats[k]}`);
 }
 
-test('all data files load and are non-empty; total size < 6 MB', () => {
+// 8 MB since 0.2.5: the third chess form (王牌 `_c`) adds 129 records of the golden record's shape (build-data.mjs
+// MAX_DATA_BYTES, docs/DATA.md §0). It is a bloat guard, not a gameplay limit — chess.json gzips ≈11.6×.
+test('all data files load and are non-empty; total size < 8 MB', () => {
   let total = 0;
   for (const f of FILES) {
     total += statSync(join(DATA, `${f}.json`)).size;
     assert.ok(Object.keys(D[f]).length > 0, `${f} is empty`);
   }
-  assert.ok(total < 6 * 1024 * 1024, `total ${total} bytes`);
+  assert.ok(total < 8 * 1024 * 1024, `total ${total} bytes`);
 });
 
 test('numbers: every stats/bb/enemyScale object holds only finite numbers (no null/NaN leaks)', () => {
@@ -75,13 +82,18 @@ test('numbers: every stats/bb/enemyScale object holds only finite numbers (no nu
   assert.deepEqual(bad.slice(0, 10), [], `${bad.length} bad numeric fields`);
 });
 
-test('chess: 266 records, 112 visible non-DIY (16/17/19/22/19/19 per tier)', () => {
-  assert.equal(Object.keys(chess).length, 266);
+test('chess: 395 records (133 normal + 133 elite + 129 王牌), 112 visible non-DIY (16/17/19/22/19/19 per tier)', () => {
+  assert.equal(Object.keys(chess).length, 395);
+  // the third form (王牌 `_c`, a deliberate deviation of 0.2.5): one per non-DIY base chess — the 4 DIY slots have no
+  // character to build a form from (build-data.mjs injectAceForms)
+  const aces = Object.values(chess).filter((c) => c.isAce);
+  assert.equal(aces.length, 129);
+  assert.equal(normalChess.length, 133);
+  assert.equal(normalChess.filter((c) => c.isDiy).length, 4);
   assert.equal(visible.length, 112);
   const perTier = {};
   for (const c of visible) perTier[c.tier] = (perTier[c.tier] || 0) + 1;
   assert.deepEqual(perTier, { 1: 16, 2: 17, 3: 19, 4: 22, 5: 19, 6: 19 });
-  assert.equal(normalChess.filter((c) => c.isDiy).length, 4);
   assert.equal(normalChess.filter((c) => c.isHidden).length, 17);
 });
 
@@ -113,7 +125,14 @@ test('chess: every non-DIY chess has stats, range, classification and a resolvab
     assert.ok(['arrow', 'bolt', 'orb', 'none'].includes(c.projectile), `${c.chessId}: projectile`);
     assert.equal(typeof c.canHitFly, 'boolean');
     assert.ok(c.skill && typeof c.skill.skillId === 'string', `${c.chessId}: skill`);
-    assert.ok(c.skill.level === (c.isGolden ? 7 : 4), `${c.chessId}: skill level ${c.skill.level}`);
+    // the three forms' skill levels: 普通 4, 精锐 7 (official), 王牌 专精三 — 10, or the highest level the body's own
+    // skills have (the 原型干员's skcom_* skills stop at 7, so a NORMAL 王牌 reads 7)
+    if (c.isAce) {
+      assert.equal(c.skill.level, c.status.skillLevel, `${c.chessId}: 王牌 skill level`);
+      assert.ok([7, 10].includes(c.skill.level), `${c.chessId}: 王牌 skill level ${c.skill.level}`);
+    } else {
+      assert.equal(c.skill.level, c.isGolden ? 7 : 4, `${c.chessId}: skill level`);
+    }
     assert.ok(typeof c.skill.trigger?.rule === 'string', `${c.chessId}: trigger`);
     assert.ok(typeof c.skill.desc === 'string' && !/\{[a-z_@.\[\]]+(:[0-9.%]+)?\}/i.test(c.skill.desc), `${c.chessId}: unresolved skill placeholder`);
     for (const [k, v] of Object.entries(c.skill.bb)) assert.ok(isFiniteNum(v), `${c.chessId}: skill bb ${k}`);
@@ -513,12 +532,12 @@ test('chess: skills[] = every skill unlocked at the status, at the chess skill l
     assert.ok(wider(s.trigger.customRangeGrid, c.rangeGrid), `${c.chessId} ${s.skillId}: its running range strictly contains ${c.rangeId}`);
     if (s.rangeGrid) assert.deepEqual(s.trigger.customRangeGrid, s.rangeGrid, `${c.chessId} ${s.skillId}: the skill's own grid`);
   }
-  assert.equal(active.length, 78, '39 skills, normal + elite');
+  assert.equal(active.length, 39 * FORMS, `39 skills × ${FORMS} forms`);
   assert.equal(new Set(active.map(([c, s]) => `${c.baseId} ${s.skillId}`)).size, 39);
   // from the SEARCH row (解放者 / 阵法术师 / 安洁莉娜) and 深巡 S2's deviation: the owner's decisions of 2026-10-05
   const fromSearch = active.filter(([, s]) => s.trigger.rawRule === 'SEARCH').map(([c, s]) => `${c.baseId} ${s.skillId}`);
   assert.deepEqual([...new Set(fromSearch)].sort(), ['chess_char_3_08_a skchr_mint_1', 'chess_char_4_05_a skchr_beewax_1', 'chess_char_4_24_a skchr_billro_3', 'chess_char_5_19_a skchr_mlynar_2', 'chess_char_5_20_a skchr_aglina_3']);
-  assert.equal(fromSearch.length, 10);
+  assert.equal(fromSearch.length, 5 * FORMS);
   // the SEARCH skills whose range does not grow keep the row (薄绿 / 蜜蜡 S2, 卡涅利安 S1 / S2, 玛恩纳 S1, 安洁莉娜 S2, 圣聆初雪 S1)
   const search = Object.values(chess).flatMap((c) => (c.skills || []).filter((s) => s.trigger.rule === 'SEARCH').map((s) => `${c.baseId} ${s.skillId}`));
   assert.deepEqual([...new Set(search)].sort(), ['chess_char_3_08_a skchr_mint_2', 'chess_char_4_05_a skchr_beewax_2', 'chess_char_4_24_a skchr_billro_1', 'chess_char_4_24_a skchr_billro_2', 'chess_char_5_19_a skchr_mlynar_1', 'chess_char_5_20_a skchr_aglina_2', 'chess_char_6_02_a skchr_sbell2_1']);
@@ -529,7 +548,7 @@ test('chess: skills[] = every skill unlocked at the status, at the chess skill l
   assert.equal(grown('chess_char_3_08_a', 'skchr_mint_1').rawRule, 'SEARCH', '薄绿 S1: its official 阵法术师 row stays the rawRule');
   assert.equal(grown('chess_char_5_15_a', 'skchr_thorn2_3').rule, 'DEFAULT', '引星棘刺 S3: 被动效果：攻击范围扩大 is her own range');
   const deviated = Object.values(chess).flatMap((c) => (c.skills || []).filter((s) => s.trigger.rawRule === 'TAKE_DAMAGE' && s.trigger.rule !== 'TAKE_DAMAGE').map((s) => `${c.baseId} ${s.skillId}`));
-  assert.equal(deviated.length, 14, 'exactly the six skills of §21.29 and 余 S2, normal + elite');
+  assert.equal(deviated.length, 7 * FORMS, 'exactly the six skills of §21.29 and 余 S2, on every form');
   assert.deepEqual([...new Set(deviated)].sort(), ['chess_char_1_04_a skchr_udflow_2', 'chess_char_1_20_a skchr_liskam_2', 'chess_char_2_18_a skchr_ashlok_2', 'chess_char_2_18_a skcom_atk_up[3]', 'chess_char_5_08_a skchr_horn_2', 'chess_char_5_08_a skchr_horn_3', 'chess_char_6_03_a skchr_yu_2']);
   for (const c of Object.values(chess)) {
     for (const s of c.skills || []) {

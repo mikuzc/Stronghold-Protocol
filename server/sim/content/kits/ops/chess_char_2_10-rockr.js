@@ -3,7 +3,7 @@
 
 import { canTargetEnemy } from '../../../targeting.js';
 import { bodyInKeys } from '../../../body.js';
-import { num, talentBb, up } from '../shared/tier1.js';
+import { moduleBb, num, talentBb, up } from '../shared/tier1.js';
 import { onDefaultSkill } from '../shared/tier2.js';
 
 export default {
@@ -54,13 +54,21 @@ export default {
         }, { owner: unit });
         const iv = num(t.interval), max = Math.floor(num(t.max_stack_cnt)), v = num(t.atk);
         if (!(iv > 0) || !(max > 0) || !v) return;
+        // 模组3 (uniequip_002_rockr Lv3) adds 「叠满后攻击速度+5」: the number is the module's hidden talent
+        // (`bb.attack_speed`), the condition sentence stays on 立于磐石 — the named talent read above.
+        const fullAspd = num(moduleBb(chess)?.attack_speed);
         battle.on('tick', () => {
           if (!up(unit)) return;
           const n = Math.min(max, Math.floor((battle.time - unit.deployedAt + 1e-9) / iv));
           const cur = unit.findBuff('rockr:rock');
-          if ((cur ? cur.stacks : 0) === n) return;
-          if (n > 0) battle.addBuff(unit, { key: 'rockr:rock', mods: { atkPct: v }, stacks: n, maxStacks: max, tags: ['talent'] });
-          else battle.removeBuff(unit, 'rockr:rock');
+          if ((cur ? cur.stacks : 0) !== n) {
+            if (n > 0) battle.addBuff(unit, { key: 'rockr:rock', mods: { atkPct: v }, stacks: n, maxStacks: max, tags: ['talent'] });
+            else battle.removeBuff(unit, 'rockr:rock');
+          }
+          const want = fullAspd > 0 && n >= max;
+          const has = unit.findBuff('rockr:rock-full');
+          if (want && !has) battle.addBuff(unit, { key: 'rockr:rock-full', mods: { aspd: fullAspd }, tags: ['talent'] });
+          else if (!want && has) battle.removeBuff(unit, 'rockr:rock-full');
         }, { owner: unit });
       } }],
     };

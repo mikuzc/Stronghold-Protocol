@@ -15,6 +15,8 @@ const D = (id) => ds.getChess(id);
 const BB = (id) => D(id).skill.bb;
 const TB = (id, i) => D(id).talents[i].bb;
 const TR = (id) => D(id).traitBb;
+/** Merged blackboard of the hidden module talents (data index −1, stage 2/3). */
+const HID = (id) => Object.assign({}, ...(D(id).raw.talents ?? []).filter((t) => t.index === -1).map((t) => t.bb));
 const approx = (a, b, eps = 1e-6, msg = '') => assert.ok(Math.abs(a - b) <= eps * Math.max(1, Math.abs(b)), `${msg} ${a} ≈ ${b}`);
 const dummy = (key, o = {}) => enemyRec({ key, hp: 1e7, speed: 0, def: 0, res: 0, ...o });
 const fill = (u) => u.skill.gainSp(u.skill.spCost * u.skill.maxCharges + 1, 'test');
@@ -89,6 +91,37 @@ test('3_02 断崖: 浮游刃 arts hits + blade damage on enemies blocked by adja
     } else assert.equal(tagged(h, 'module', u).length, 0);
     done(h);
   }
+});
+
+test('3_02 断崖 王牌(模组3): 索敌援助 对阻挡敌人的友军额外 +5 攻速，未阻挡的只拿基础值', () => {
+  // 模组 2/3 级新增 hidden talent (index −1) {attack_speed: 5}，条件句「其中阻挡敌人的友军攻速额外+5」留在具名天赋
+  // 索敌援助 上（同时把基础值从 10 提到 13）。kit 读 moduleTalentBb，把额外值只给 blocking.length > 0 的友军。
+  const id = 'chess_char_3_02_c', t0 = TB(id, 0), extra = HID(id).attack_speed;
+  assert.equal(extra, 5, 'the hidden module talent carries +5 ASPD');
+  assert.equal(t0.attack_speed, 13, 'and the named talent itself is 13 at stage 3');
+  assert.equal(ds.rawChess(id).status.equipLevel, 3, 'the ace carries the module at stage 3');
+  const h = makeBattle({
+    defs: { enemies: { enemy_blocked: dummy('enemy_blocked'), enemy_free: dummy('enemy_free') } }, timeLimit: 60, captureNoisy: true,
+    units: [
+      { chessId: id, row: 10, col: 4 },
+      { chessId: 'chess_char_3_16_a', row: 11, col: 4 },   // stands in the aura and blocks enemy_blocked
+      { chessId: 'chess_char_3_16_b', row: 9, col: 4 },    // stands in the aura, blocks nothing
+    ],
+    enemies: [{ key: 'enemy_blocked', pos: [11, 4] }, { key: 'enemy_free', pos: [9, 5] }],
+  });
+  const u = h.unit(id), blocker = h.unit('chess_char_3_16_a'), free = h.unit('chess_char_3_16_b');
+  h.run(0.5);
+  assert.equal(blocker.blocking.length, 1, 'the first ally blocks the dummy');
+  assert.equal(free.blocking.length, 0, 'the second one blocks nothing');
+  approx(blocker.s.aspd, blocker.base.aspd + t0.attack_speed + extra, 1e-6, 'a blocking ally gets 13 + 5');
+  approx(free.s.aspd, free.base.aspd + t0.attack_speed, 1e-6, 'a free ally gets only 13');
+  approx(u.s.aspd, u.base.aspd + t0.attack_speed, 1e-6, '断崖 herself blocks nothing → only 13');
+  // the extra rides on the blocker's live state: killing the blocked enemy drops it back to the base aura
+  h.b.dealDamage(u, h.enemy('enemy_blocked'), { amount: 1e9, type: 'true', tags: ['test'] });
+  h.run(0.6);   // the aura re-evaluates every 0.2 s (shared/tier3.js aura interval)
+  assert.equal(blocker.blocking.length, 0, 'nothing blocked any more');
+  approx(blocker.s.aspd, blocker.base.aspd + t0.attack_speed, 1e-6, 'the +5 goes away with the block');
+  done(h);
 });
 
 test('3_03 诗怀雅: 近距离作战指导 melee ATK aura, ×talent_scale during 协同作战', () => {

@@ -30,6 +30,9 @@ export function statusKey(status) {
 export const IDENTITY_FIELDS = Object.freeze([
   'chessId', 'baseId', 'goldenId', 'isGolden', 'tier', 'identifier', 'isHidden', 'isDiy', 'visible', 'chessType', 'backup',
   'shopSortId', 'bonds', 'garrisonIds', 'price', 'sellPrice', 'upgradeNum', 'upgradeChessId', 'status', 'diyRequirement',
+  // the third chess form (王牌 `_c`): present only on the records that are one, or lead to one (build-data.mjs
+  // injectAceForms). Identity, not a property of the character, so a composed record keeps them.
+  'isAce', 'aceChessId',
 ]);
 
 /** The form of `charId` at a chess `status`, or null. */

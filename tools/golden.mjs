@@ -248,7 +248,12 @@ const ENEMY_COLS = Object.freeze(['spawned', 'killed', 'leaked', 'dmg', 'taken']
 // corpus helpers (pure functions of data/*.json)
 
 const CHESS = Object.values(data.chess).sort((a, b) => byId(a.chessId, b.chessId));
-const VISIBLE = CHESS.filter((c) => c.visible);
+// The golden corpus pins the OFFICIAL mode, so it enumerates official records only. The 王牌 (`_c`, a deliberate
+// deviation — build-data.mjs ACE_SUFFIX) is a third form that exists solely when a mode switches it on: it must not
+// widen the corpus, or every official scenario is reshuffled by its presence (roster/bonds/fields digests all move).
+// It is also `visible: false` in the data, so VISIBLE already skips it; the raw-CHESS lookups below need it explicitly.
+const OFFICIAL = CHESS.filter((c) => !c.isAce);
+const VISIBLE = OFFICIAL.filter((c) => c.visible);
 // the battle stages (data/stages.json also keeps the escaped levels' two maps, kind 'unite', which no field uses)
 const STAGES = Object.keys(data.stages).filter((id) => data.stages[id].kind !== 'unite').sort(byId);
 const BANDS = Object.keys(data.bands).sort(byId);
@@ -522,12 +527,12 @@ export function bondScenarios() {
       const want = level === 'low' || downward ? th[0] : Math.min(th[th.length - 1], 10);
       const picks = [];
       for (const base of bases.slice(0, want)) {
-        const ids = CHESS.filter((c) => c.baseId === base).map((c) => c.chessId).sort(byId);
+        const ids = OFFICIAL.filter((c) => c.baseId === base).map((c) => c.chessId).sort(byId);
         picks.push((level === 'high' || golden) && ids.length > 1 ? ids[ids.length - 1] : ids[0]);
       }
       // 助力: the upper tier counts operators that differ in name OR elite state — add the other copy of two members
       if (bondId === 'deputShip' && level === 'high') {
-        for (const base of bases.slice(0, 2)) for (const c of CHESS.filter((x) => x.baseId === base)) if (!picks.includes(c.chessId)) picks.push(c.chessId);
+        for (const base of bases.slice(0, 2)) for (const c of OFFICIAL.filter((x) => x.baseId === base)) if (!picks.includes(c.chessId)) picks.push(c.chessId);
       }
       // 调和: two 炎 members next to it, so its +1 lifts a core bond to its threshold
       if (bondId === 'maniShip') picks.push(...VISIBLE.filter((c) => !c.isGolden && (c.bonds || []).includes('yanShip')).slice(0, 2).map((c) => c.chessId));
@@ -650,7 +655,7 @@ export function fieldScenarios() {
 // family: standins (0.2.0 补位)
 
 /** The NORMAL chess records (normal + elite) that have a stand-in (shared/standIn.js: PRESET / 自选 have none). */
-const STANDIN_CHESS = CHESS.filter((c) => c.chessType === 'NORMAL' && !c.isDiy && c.backup && c.backup.charId && c.backup.charId !== c.charId);
+const STANDIN_CHESS = OFFICIAL.filter((c) => c.chessType === 'NORMAL' && !c.isDiy && c.backup && c.backup.charId && c.backup.charId !== c.charId);
 
 export function standInScenarios() {
   // normal records first, then the elites; within them by strength band (tier + elite) and id; a battle takes up to 12

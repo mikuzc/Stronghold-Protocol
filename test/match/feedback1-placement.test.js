@@ -320,6 +320,10 @@ const CLIFF_E = 'chess_char_2_03_b';
 const FORCER_N = 'chess_char_3_07_a';
 const FORCER_E = 'chess_char_3_07_b';
 const HOLDERS = [GLAD_N, GLAD_E, CLIFF_N, CLIFF_E, FORCER_N, FORCER_E];
+// The 王牌 (`_c`, a deviation: build-data.mjs ACE_SUFFIX) carries the same 特质 and modules as its elite, so the DATA
+// keeps the 高台 line on it too. It is `visible: false` (never in the pool, so it cannot be `give`n) — only the
+// record-level test below sees it.
+const ACE_HOLDERS = [GLAD_N, CLIFF_N, FORCER_N].map((id) => `${id.slice(0, -1)}c`);
 const HOK_X = 'uniequip_002_glady';
 const HOK_Y = 'uniequip_003_glady';
 const TANK = (c) => c.profession === 'TANK' && c.position === 'MELEE';
@@ -337,16 +341,17 @@ test('高台 data: no chess stores placement; 「可以放置于远程位」 is 
   assert.equal(Object.values(DATA.chess).some((c) => c.placement !== undefined), false);
   for (const t of Object.values(DATA.tokens)) assert.equal(t.placement, undefined, t.tokenId);
   const widened = Object.values(DATA.chess).filter((c) => meleeOnHighGround(c)).map((c) => c.chessId).sort();
-  assert.deepEqual(widened, HOLDERS.slice().sort());
-  for (const id of HOLDERS) {
+  assert.deepEqual(widened, [...HOLDERS, ...ACE_HOLDERS].sort());
+  for (const id of [...HOLDERS, ...ACE_HOLDERS]) {
     const c = DATA.chess[id];
     assert.equal(c.position, 'MELEE', id);
     assert.ok(['钩索师', '推击手'].includes(c.subProfessionName), id);
     for (const x of c.modules || []) assert.ok(x.traitOverride.desc.includes(PLACE_ON_RANGED), `${id} ${x.typeName} keeps the line`);
   }
   // the module text never adds the line to anybody else (教官 Y "可以额外部署在远程位" is a talent, not the trait)
+  const holdersAll = new Set([...HOLDERS, ...ACE_HOLDERS]);
   for (const c of Object.values(DATA.chess)) {
-    if (HOLDERS.includes(c.chessId)) continue;
+    if (holdersAll.has(c.chessId)) continue;
     for (const x of c.modules || []) assert.ok(!(x.traitOverride?.desc || '').includes(PLACE_ON_RANGED), `${c.chessId} ${x.typeName}`);
   }
   assert.equal(DATA.chess[GLAD_E].modules.find((x) => x.uniEquipId === HOK_Y).typeName, 'HOK-Y');

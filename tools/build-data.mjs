@@ -47,6 +47,30 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RESEARCH_DIR = join(ROOT, 'docs', 'research');
 const GAMEDATA_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/';
 const SEASON = 'act2autochess';
+/**
+ * Total byte budget of `data/*.json` (compact JSON, no indentation). 0.2.5 raised it from 6 MB to 8 MB for the third
+ * chess form (王牌, `_c`): 133 more records of the golden record's shape are ≈ +0.86 MB, which 6 MB could not hold
+ * (5.81 MB were already used). The cost to a player is small — `chess.json` gzips ≈11.6×, so +0.86 MB raw is ≈ +74 KB
+ * over the wire (159 KB → 233 KB) — and the limit exists to catch accidental bloat, not to constrain a real feature.
+ */
+const MAX_DATA_BYTES = 8 * 1024 * 1024;
+/**
+ * The third chess form (王牌 / ACE), the maintainer's decision of 2026-10-09: the official mode has exactly two forms
+ * (`_a` 普通, `_b` 精锐) and the upgrade ladder stops at the golden (every golden has `upgradeNum` 0 and no
+ * `upgradeChessId`), so this is a deliberate deviation — 「确认偏离,照改」. Its status is the official mode's own ceiling
+ * values, all of which the data tables carry for every chess:
+ *   - E2 at each rarity's own max level (4★ 70, 5★ 80, 6★ 90 — `character_table.phases[2].maxLevel`);
+ *   - skill 专精三 = `skillLevel` 10 (skill_table levels 8/9/10 are 专一/专二/专三);
+ *   - module level 3 (every one of the 127 modular chess has equipLevels 1,2,3; the 6 without a module keep 0).
+ * The 王牌 is built by injecting synthetic `_c` rows into the loaded activity tables, so the existing `buildChess` body
+ * builds it with no special case (see `injectAceRows`).
+ */
+const ACE_SUFFIX = '_c';
+/** `skillLevel` of 专精三 (skill_table levels 8/9/10 = 专一/专二/专三). */
+const ACE_SKILL_LEVEL = 10;
+/** Module level of the 王牌 (the highest an ADVANCED uniequip has). */
+const ACE_EQUIP_LEVEL = 3;
+
 const USAGE = 'usage: node tools/build-data.mjs [--refresh | --offline] [--out <dir>] [--cache <dir>] [--report <file>] [--quiet] [--no-research] [--force]';
 
 /**
@@ -157,6 +181,108 @@ function templateIdOf(levelId) {
   if (!m) throw new Error(`bad levelId ${levelId}`);
   return m[1].toLowerCase();
 }
+/**
+ * The highest skill level a character can actually reach at E2: the fewest levels among the skills unlocked there (its
+ * own skill table rows). 10 for every real operator; the 原型干员 carry 7-level `skcom_*` stand-in skills.
+ * @param {Record<string, any>} charTable character_table.json
+ * @param {Record<string, any>} skillTable skill_table.json
+ * @returns {number} 0 when the character has no unlocked skill at all
+ */
+function skillCeilingOf(charTable, skillTable, charId, level) {
+  const ch = charTable[charId];
+  if (!ch?.phases?.[2]) return 0;
+  let min = Infinity;
+  for (const se of ch.skills || []) {
+    if (!se?.skillId || !unlocked(se.unlockCond, 2, level)) continue;
+    const n = skillTable[se.skillId]?.levels?.length ?? 0;
+    if (n < min) min = n;
+  }
+  return min === Infinity ? 0 : min;
+}
+
+/**
+ * Inject the third chess form (王牌 / ACE, `_c`) into the loaded activity tables.
+ *
+ * Why synthetic rows and not a separate builder: `buildChess` derives everything from three activity tables
+ * (`charChessDataDict` for the status, `chessNormalIdLookupDict` for the base id, `charShopChessDatas` for the shop row).
+ * A `_c` row that points its lookup at the `_a` row therefore reuses the whole existing body — the same skills, tokens,
+ * module parts and assets — and differs only in the status it reads. That is exactly the third form.
+ *
+ * The status is the official mode's own ceiling (no invented numbers): E2 at the rarity's max level (4★ 70 / 5★ 80 /
+ * 6★ 90 — for a NORMAL chess the lower of the operator's and its 补位 stand-in's, see below), `skillLevel` 10 (专精三,
+ * or the highest level that body's own skills have) and module level 3. A chess whose character has no module (6 of 133)
+ * keeps `equipLevel` 0 — there is no level-3 module to activate.
+ *
+ * `_b` keeps its official fields untouched (`upgradeNum` 0, `upgradeChessId` null); the ladder to the 王牌 lives in the
+ * new `aceChessId` field, so the official two-form rules stay byte-identical when the third form is switched off.
+ * @param {object} act the season's activity section (mutated)
+ * @param {Record<string, any>} charTable character_table.json
+ * @returns {{made:number, skipped:number, cappedByBackup:number, noE2:string[]}} what was injected (and why a chess got none)
+ */
+function injectAceForms(act, charTable, skillTable) {
+  const ccd = act.charChessDataDict;
+  const lookup = act.chessNormalIdLookupDict;
+  const shops = act.charShopChessDatas;
+  const noE2 = [];
+  let made = 0, skipped = 0, cappedByBackup = 0, cappedSkills = 0;
+  for (const [baseId, cd] of Object.entries(ccd)) {
+    if (cd.isGolden) continue;
+    const golden = cd.upgradeChessId ? ccd[cd.upgradeChessId] : null;
+    if (!golden) { skipped++; continue; }
+    const aceId = baseId.replace(/_a$/, ACE_SUFFIX);
+    if (ccd[aceId]) continue;
+    const shop = shops[baseId];
+    const e2 = shop ? charTable[shop.charId]?.phases?.[2] : null;
+    if (!e2) { noE2.push(baseId); skipped++; continue; }
+    // The status must be reachable by BOTH bodies a NORMAL chess can field: the operator (buildChess interpolates
+    // shop.charId) and its 补位 stand-in (buildBackups adds a form for backup.charId at exactly this status, and
+    // shared/standIn.js standInRecord looks it up by statusKey — no form, no stand-in). The 原型干员 are 4★ (E2 Lv70) or
+    // 6★ (Lv90), so a 6★ operator's Lv90 is out of reach for a 4★ reserve. The ace therefore takes the LOWER of the two
+    // E2 caps: the highest level both bodies actually have, i.e. 满级 for whichever one limits it. Taking the operator's
+    // cap alone left 14 NORMAL aces asking a Lv70 reserve for Lv90 — interpolateAttrs clamps, so the stored numbers were
+    // right, but the status named a level its body does not have (and read as an extrapolation, not a cap).
+    const backupE2 = shop.chessType === 'NORMAL' && shop.backupCharId ? charTable[shop.backupCharId]?.phases?.[2] : null;
+    const maxLevel = Math.min(e2.maxLevel, backupE2?.maxLevel ?? Infinity);
+    if (backupE2 && backupE2.maxLevel < e2.maxLevel) cappedByBackup++;
+    // Skill level: 专精三 (10) is the ceiling, but a body can only reach the levels its OWN skills have. The six
+    // 预备干员 carry the 7-level stand-in skills (skcom_*), so their 王牌 is 专精三-equivalent at level 7 — the highest
+    // that exists. buildSkill clamps silently, so asking for 10 would store level 7 while the status claimed 10; take the
+    // real ceiling instead. Only the same 14 chess are affected (a 4★/5★ reserve standing in for a 6★ operator).
+    const skillCap = Math.min(
+      ACE_SKILL_LEVEL,
+      skillCeilingOf(charTable, skillTable, shop.charId, maxLevel),
+      backupE2 ? skillCeilingOf(charTable, skillTable, shop.backupCharId, maxLevel) : ACE_SKILL_LEVEL,
+    );
+    if (skillCap < ACE_SKILL_LEVEL) cappedSkills++;
+    // Module: level 3 when the chess has one at all — the official `_b` precedent counts EITHER body's module
+    // (charShopChessDatas: chess_char_5_14_a has no operator module but its stand-in 缪尔赛思 carries
+    // uniequip_002_acpion, and the official elite row still reads equipLevel 1). Taking only the operator's left that
+    // one ace at equipLevel 0 with no module to activate.
+    const hasModule = !!(shop.defaultUniEquipId || (shop.chessType === 'NORMAL' && shop.backupCharUniEquipId));
+    ccd[aceId] = {
+      chessId: aceId,
+      identifier: (golden.identifier ?? 0) + 133,
+      isGolden: true,
+      isAce: true,
+      status: {
+        evolvePhase: 'PHASE_2',
+        charLevel: maxLevel,
+        skillLevel: skillCap,
+        favorPoint: 0,
+        equipLevel: hasModule ? ACE_EQUIP_LEVEL : 0,
+      },
+      upgradeChessId: null,
+      upgradeNum: 0,
+      bondIds: [...(golden.bondIds || [])],
+      garrisonIds: [...(golden.garrisonIds || [])],
+    };
+    lookup[aceId] = baseId;
+    golden.aceChessId = aceId;
+    made++;
+  }
+  return { made, skipped, cappedByBackup, cappedSkills, noE2 };
+}
+
 /**
  * Cache-relative path of a level file. Accepts an official levelId
  * ('Activities/ACT1AUTOCHESS/level_autochess_enemy_data') or a plain stage id ('act2autochess_m01').
@@ -354,6 +480,10 @@ async function loadContext() {
   const act = activity?.activity?.AUTOCHESS_SEASON?.[SEASON];
   const ac = activity?.autoChessData;
   if (!act || !ac) throw new Error('activity_table has no act2autochess / autoChessData section');
+  // The third chess form (王牌 `_c`) is synthesized onto the official rows before anything reads them (see
+  // injectAceForms): every builder below then treats it as one more chess.
+  const ace = injectAceForms(act, charTable, skillTable);
+  log(`third chess form: ${ace.made} 王牌 record(s) synthesized${ace.cappedByBackup ? `, ${ace.cappedByBackup} capped at the 补位 stand-in's E2 level` : ''}${ace.cappedSkills ? `, ${ace.cappedSkills} below 专精三 (their skills have fewer levels)` : ''}${ace.skipped ? `, ${ace.skipped} skipped` : ''}`);
 
   // Note: summons/traps live in character_table (token_table.json only lists 4 unrelated traps).
 
@@ -929,7 +1059,13 @@ function buildChess(ctx) {
     const rec = {
       chessId, baseId, goldenId: shop.goldenChessId, isGolden, tier,
       identifier: cd.identifier,
-      isHidden: !!shop.isHidden, isDiy, visible: !shop.isHidden && !isDiy,
+      isHidden: !!shop.isHidden, isDiy,
+      // `visible` = "this record is a shop-eligible / corpus-visible piece". The official records keep the derived
+      // value. The 王牌 (`_c`) is a deliberate deviation that only exists when a mode switches the third form on, so it
+      // must NOT widen the official corpus: tools/golden.mjs and anything else that enumerates `visible` records would
+      // otherwise reshuffle every official scenario, and shared/protocol.js checkLoadout would accept `_c` as a
+      // player-chosen loadout target. Its own `isAce` flag is what the mode layer keys on.
+      visible: !cd.isAce && !shop.isHidden && !isDiy,
       chessType: shop.chessType,
       // the official stand-in fields of the shop row, verbatim (both forms; data/backups.json, shared/standIn.js)
       backup: {
@@ -952,6 +1088,10 @@ function buildChess(ctx) {
       trait: null, skill: null, talents: [], tokens: [], module: null,
       assets: null,
     };
+    // The third form (王牌 `_c`, a deliberate deviation — see ACE_SUFFIX). Both fields are written only when they apply,
+    // so an official `_a` record keeps exactly its old shape; `_b` gains the ladder to its 王牌.
+    if (cd.isAce) rec.isAce = true;
+    if (cd.aceChessId) rec.aceChessId = cd.aceChessId;
     if (isDiy) {
       rec.name = '甄选干员';
       rec.diyRequirement = act.diyChessDict?.[baseId] || null;
@@ -3906,7 +4046,9 @@ function validateAll(f) {
   const deviationHolds = (rule, trig) => trig.rawRule === 'TAKE_DAMAGE' && (trig.rule === rule || (ACTIVE_RANGE_OVER.has(rule) && trig.rule === 'ACTIVE_RANGE'));
   for (const [baseId, skillsOf] of Object.entries(TRIGGER_DEVIATIONS)) {
     const recs = Object.values(chess).filter((c) => c.baseId === baseId);
-    if (recs.length !== 2) err(`trigger deviation ${baseId}: expected the normal and the elite record, got ${recs.length}`);
+    // every form of the family (the third form 王牌 `_c` included: it is built by the same body, so it must agree)
+    const want = recs.some((c) => c.isAce) ? 3 : 2;
+    if (recs.length !== want) err(`trigger deviation ${baseId}: expected the normal, the elite and (with a third form) the 王牌 record, got ${recs.length}`);
     for (const [skillId, rule] of Object.entries(skillsOf)) {
       for (const c of recs) {
         const s = (c.skills || []).find((x) => x.skillId === skillId);
@@ -4107,7 +4249,7 @@ async function main() {
     sizes[name] = Buffer.byteLength(texts[name]);
     total += sizes[name];
   }
-  if (total > 6 * 1024 * 1024) errors.push(`total data size ${total} exceeds 6 MB`);
+  if (total > MAX_DATA_BYTES) errors.push(`total data size ${total} exceeds ${MAX_DATA_BYTES / 1024 / 1024} MB`);
   // Integrity errors keep the previous (valid) output untouched unless --force.
   const write = !errors.length || OPTS.force;
   if (write) {

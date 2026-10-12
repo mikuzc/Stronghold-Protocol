@@ -63,7 +63,8 @@ test('data: every NORMAL chess record resolves to its stand-in def — the chess
     assert.ok(isStandInDef(d) && !isStandInDef(own));
     n++;
   }
-  assert.equal(n, 110);
+  // normal, elite and 王牌 — three forms for every NORMAL chess a 预备干员 stands in for
+  assert.equal(n, 165);
 });
 
 test('data: a source without backups.json fields the chess itself (a browser that did not fetch it); with it, the stand-in', () => {
@@ -255,7 +256,7 @@ test('the eight 预备干员: every chess record they replace fields the stand-i
     assert.equal(h.b.errors.length, 0, `${where}: ${JSON.stringify(h.b.errors[0])}`);
     seen.add(charId);
   }
-  assert.equal(RESERVE_RECORDS.length, 28);
+  assert.equal(RESERVE_RECORDS.length, 42);
   assert.deepEqual([...seen].sort(), RESERVES);
 });
 
