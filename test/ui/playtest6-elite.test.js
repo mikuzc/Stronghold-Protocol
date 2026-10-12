@@ -170,7 +170,9 @@ describe('shop bar: the merge tag and the armed card', () => {
     const src = read('public/js/screens/game.js');
     assert.match(src, /onArm=\$\{setArmedCard\}/, 'ShopBar reports the armed card');
     assert.match(src, /mergeTarget\(priv, armedCard\.id, gd\.chess\)/, 'the target comes from gameLogic.mergeTarget');
-    assert.match(src, /view\.highlightTiles\(mergeAt \? \[\[mergeAt\.row, mergeAt\.col\]\] : \[\], MERGE_HL\)/, 'its own highlight group (cleared with [])');
+    // 三阶远征's second rung (3 精锐 → 王牌) draws the same group with ACE_HL — the gold BORDER, fill off (DESIGN §6.7)
+    assert.match(src, /view\.highlightTiles\(mergeAt \? \[\[mergeAt\.row, mergeAt\.col\]\] : \[\], mergeIsAce \? ACE_HL : MERGE_HL\)/, 'its own highlight group (cleared with [])');
     assert.match(read('public/js/screens/game/marks.js'), /const MERGE_HL = Object\.freeze\(\{ group: 'mergeTile'/);
+    assert.match(read('public/js/screens/game/marks.js'), /const ACE_HL = Object\.freeze\(\{ group: 'mergeTile'[^}]*fill: 0/, 'the 王牌 border has no wash');
   });
 });

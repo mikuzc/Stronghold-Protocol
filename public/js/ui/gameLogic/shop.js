@@ -24,23 +24,50 @@ export function priceTone(slot) {
   return 'gold';
 }
 
+/** The pieces a merge counts: the player's board, hand and temp (mirror of PlayerState._chessLocations). */
+function piecesOf(priv) {
+  return [
+    ...(Array.isArray(priv?.board) ? priv.board : []),
+    ...(Array.isArray(priv?.hand) ? priv.hand : []),
+    ...(Array.isArray(priv?.temp) ? priv.temp : []),
+  ];
+}
+
 /**
- * Owned copies of a base chess (normal pieces on board/hand/temp) — shop cards show merge progress. An elite card
- * never merges (server PlayerState.completesChessMerge refuses isGolden), so it reports 0 copies: no pips, no 可晋升
- * tag and no mergeTarget tile.
+ * The 三阶远征 second rung of `chessId`, or null. In a `threeTier` match an ELITE whose record links a 王牌 merges
+ * 3 精锐 → 王牌 (server PlayerState.mergesNow / gamedata.mergeTargetOf); outside one the elite is terminal and this is
+ * null, exactly as before. `priv.threeTier` rides the private frame (server/match/player/views.js), so no caller passes it.
+ */
+function aceRung(priv, chessId, getChess) {
+  const c = getChess(chessId);
+  if (!c || priv?.threeTier !== true || !c.isGolden) return null;
+  if (typeof c.aceChessId !== 'string' || !getChess(c.aceChessId)) return null;
+  return { need: 3, ace: true };
+}
+
+/**
+ * Owned copies of `chessId`'s OWN form (board/hand/temp) — shop cards show merge progress. A normal card counts the
+ * normal copies of its base; a 三阶远征 ELITE card counts the 精锐 of its own family instead (3 → the 王牌, and the
+ * result carries `ace: true`). An elite card outside such a match never merges (server
+ * PlayerState.completesChessMerge refuses isGolden), so it reports 0 copies: no pips, no 可晋升 tag, no mergeTarget tile.
  * @param {any} priv
  * @param {string} chessId
  * @param {(id:string)=>any} [getChess]
- * @returns {{ copies: number, need: number }}
+ * @returns {{ copies: number, need: number, ace?: boolean }}
  */
 export function mergeProgress(priv, chessId, getChess = () => null) {
   const c = getChess(chessId);
+  const ace = aceRung(priv, chessId, getChess);
+  if (ace) {
+    let copies = 0;
+    for (const p of piecesOf(priv)) if (p?.kind === 'chess' && p.id === chessId) copies += 1;
+    return { copies, need: ace.need, ace: true };
+  }
   const base = c?.baseId || chessId;
   const need = Number.isInteger(c?.upgradeNum) && c.upgradeNum > 0 ? c.upgradeNum : 3;
   if (c?.isGolden) return { copies: 0, need };
   let copies = 0;
-  const pieces = [...(Array.isArray(priv?.board) ? priv.board : []), ...(Array.isArray(priv?.hand) ? priv.hand : []), ...(Array.isArray(priv?.temp) ? priv.temp : [])];
-  for (const p of pieces) if (p?.kind === 'chess' && !p.golden && (p.id === base || getChess(p.id)?.baseId === base) && !String(p.id).endsWith('_b')) copies += 1;
+  for (const p of piecesOf(priv)) if (p?.kind === 'chess' && !p.golden && (p.id === base || getChess(p.id)?.baseId === base) && !String(p.id).endsWith('_b')) copies += 1;
   return { copies, need };
 }
 
@@ -57,12 +84,14 @@ export function mergeProgress(priv, chessId, getChess = () => null) {
  * @returns {{ row: number, col: number, dir: string } | null}
  */
 export function mergeTarget(priv, chessId, getChess = () => null) {
-  const { copies, need } = mergeProgress(priv, chessId, getChess);
+  const { copies, need, ace } = mergeProgress(priv, chessId, getChess);
   if (!(copies > 0 && copies + 1 >= need)) return null;
   const c = getChess(chessId);
   const base = c?.baseId || chessId;
-  const board = (Array.isArray(priv?.board) ? priv.board : []).filter((p) => p?.kind === 'chess' && !p.golden && Number.isInteger(p.row) && Number.isInteger(p.col)
-    && !String(p.id).endsWith('_b') && (p.id === base || getChess(p.id)?.baseId === base));
+  // a 三阶远征 rung consumes 精锐, so its tiles are the ELITES' — the normal rung's `!p.golden` / `_b` filter must not
+  // apply to it (the private frame marks an elite `golden`)
+  const board = (Array.isArray(priv?.board) ? priv.board : []).filter((p) => p?.kind === 'chess' && Number.isInteger(p.row) && Number.isInteger(p.col)
+    && (ace ? p.id === chessId : (!p.golden && !String(p.id).endsWith('_b') && (p.id === base || getChess(p.id)?.baseId === base))));
   if (!board.length) return null;
   board.sort((a, b) => a.col - b.col || b.row - a.row);
   return { row: board[0].row, col: board[0].col, dir: board[0].dir || 'RIGHT' };
@@ -97,6 +126,11 @@ export function completesMerge(priv, slot, { getChess = () => null, getItem = ()
       if (p.kind === 'chess') for (const it of Array.isArray(p.items) ? p.items : []) if (it?.id === slot.id) have += 1;
     }
     return have + 1 >= n;
+  }
+  // 三阶远征: an ELITE card completes the second rung (3 精锐 → 王牌); outside such a match an elite never merges
+  if (aceRung(priv, slot.id, getChess)) {
+    const { copies, need } = mergeProgress(priv, slot.id, getChess);
+    return need > 1 && copies + 1 >= need;
   }
   const rec = getChess(slot.id);
   if (!rec || rec.isGolden) return false;

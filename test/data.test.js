@@ -293,10 +293,12 @@ test('config: modes, rounds and templates', () => {
     const e = M[id];
     assert.equal(e.threeTier, true, id);
     assert.equal(e.hiddenRound, null, id);
-    assert.deepEqual(e.expedition.caps, [30, 60, 99], id);
+    assert.deepEqual(e.expedition.caps, ['30', 'endless', 'sealed'], id);
+    assert.equal(e.expedition.defaultCap, '30', id);
     assert.equal(e.lastRound, 30, `${id}: the default cap`);
     assert.ok(e.bossRounds.includes(14) && e.bossRounds.includes(14 + 7), id);
-    for (const c of e.expedition.caps) assert.ok(e.bossRounds.includes(c), `${id}: the cap round ${c} must be a 最终攻势`);
+    // every cap's last round (shared/constants.js EXPEDITION_CAPS `rounds`) must be a 最终攻势 round
+    for (const capRounds of [30, 99]) assert.ok(e.bossRounds.includes(capRounds), `${id}: the cap round ${capRounds} must be a 最终攻势`);
     for (const [t, n] of Object.entries(e.poolCopies.tiers)) assert.ok(n >= 9, `${id}: tier ${t} carries ${n} copies, under the 9 a ladder needs`);
     for (const [, n] of Object.entries(e.poolCopies.overrides)) assert.ok(n >= 9, `${id}: a per-operator override carries ${n} copies`);
     // the official modes must not have picked any of it up

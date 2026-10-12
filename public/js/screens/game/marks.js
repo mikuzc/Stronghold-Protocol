@@ -9,3 +9,9 @@ export const SEL_RANGE = Object.freeze({ group: 'selRange', color: 0xff9c33, fil
 
 /** The tile an armed merge-completing card's elite will take (its own group; gold like the promotion cue, render/fx.js). */
 export const MERGE_HL = Object.freeze({ group: 'mergeTile', color: 0xffd45a, fill: 0.34, line: 1 });
+
+/**
+ * The same tile when the merge produces the 王牌 (三阶远征's second rung, DESIGN §6.7): the SAME gold, drawn as a BORDER
+ * — the wash is off and only the outline is left, so the third rung reads differently from the ordinary 精锐 merge.
+ */
+export const ACE_HL = Object.freeze({ group: 'mergeTile', color: 0xffd45a, fill: 0, line: 1 });

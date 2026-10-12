@@ -114,15 +114,25 @@ generated modes `mode_single_expedition` / `mode_multi_expedition` add a third:
   table (5阶 8 / 6阶 5) cannot supply. The mode carries `poolCopies { tiers, overrides }`, which `gamedata.poolCopies`
   consults before the global tables — per key, so the official values stay byte-for-byte and an operator the mode does
   not list keeps its own.
-- **The rounds.** `expedition.caps` = 30 / 60 / 99; the room picks one (`room.setExpeditionCap` → the room screen's
-  `ExpeditionCapPicker`, host-only → Match `opts.expeditionCap` → `gamedata.expeditionCap`) and it sets `lastRound`.
-  `bossRounds` holds R14 and then every 7 rounds, plus every cap value (R28 → R30 is the one short gap: 30 is not on the
-  14 + 7k grid), and only the LAST one finishes the match — `gamedata.isFinalFightRound`, so `bossRounds.js
+- **The rounds.** `shared/constants.js EXPEDITION_CAPS` holds the three the room picks from — `30` (30 rounds), `endless`
+  (无尽: no round limit, the curve keeps rising, so the run is lost in the end by construction) and `sealed` (无限: no
+  round limit, but `gamedata.baseEnemyScale` clamps to `sealAt`, freezing the difficulty). The host picks in the room
+  screen's `ExpeditionCapPicker` (`room.setExpeditionCap` → Match `opts.expeditionCap` →
+  `gamedata.expeditionCapEntry`), and the cap's `rounds` sets `lastRound`.
+  `bossRounds` holds R14 and then every 7 rounds, plus every cap's round (R28 → R30 is the one short gap: 30 is not on
+  the 14 + 7k grid), and only the LAST one finishes the match — `gamedata.isFinalFightRound`, so `bossRounds.js
   _finishFinal` resumes the loop after an intermediate 最终攻势 (`_resumeAfterBoss`) instead of ending it. `bossRound`
   keeps its scalar meaning for `results.js` / `audit.js`: it is the final boss round. The public frame publishes the
   whole `bossRounds` list, which the client reads through `isBossRoundOf` (the boss-prep camera and the team frame, so
   R21 / R28 frame and fold like R14) and `bossRoundShown` (the boss briefing and the enemy drawer name the NEXT
   round).
+- **The client's third rung.** The private frame carries `threeTier`, so `ui/gameLogic/shop.js` needs no new caller
+  argument: `mergeProgress` counts the 精锐 of the elite's own family there (3 → the 王牌, result `ace: true`),
+  `mergeTarget` lights an ELITE's tile (the normal rung's `!p.golden` filter must not apply), and `completesMerge`
+  accepts an elite card. `shopBar.js mergeHint` says 王牌将出现在作战区原位置 / 王牌将进入整备区, and `screens/game.js`
+  draws that tile with `ACE_HL` — the same gold as `MERGE_HL` but as a BORDER (`fill: 0`), so the third rung reads
+  differently from the ordinary 精锐 merge. Outside a `threeTier` match every one of these answers exactly as before:
+  the elite is terminal.
 - **The waves.** R1–R13 are the official round data; R15+ cycle the three hardest normal templates (R11 `h04`, R12
   `h05`, R13 `h06`). `enemyScale` continues the official curve — `atk = atkBase·1.1^k`, `hp = hpBase·1.2^k·extra`, `k`
   advancing at the mean step of the official `k` array — because `gamedata.baseEnemyScale` answers 1/1 for a round with

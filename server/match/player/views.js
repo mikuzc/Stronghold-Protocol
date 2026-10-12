@@ -62,6 +62,9 @@ export class PlayerViews {
       playerId: this.playerId,
       seat: this.seat,
       alive: this.alive,
+      // 三阶远征 (DESIGN §6.7): the client's merge helpers read this to know a 精锐 can still become a 王牌, and to draw
+      // the third rung's gold-border tile. False in every official mode, where the elite is terminal.
+      threeTier: this.gd.threeTier === true,
       lp: this.lp,
       funds: this.funds,
       bandId: this.bandId,

@@ -99,7 +99,7 @@ import {
   terrainInfo, deviceInfo, deviceTipAt, noteDeviceUnits, deviceUnitsForEntry,
   countdownState, shopBlockReason, stageOverrides, effectiveStage, watchTarget, dropFailureReason,
   previewEnemyKey, prepCamera, prepCameraFor, foldCamera, deployFieldOf, fieldTile, panelSide, panelSlots, bondPopupPlace, unitLoadout, deployedRecord,
-  mergeTarget, modeOffBonds, readyFundsPrompt, readyShopFold, ownerBandId, ownDiyRecord, ownStandIn,
+  mergeProgress, mergeTarget, modeOffBonds, readyFundsPrompt, readyShopFold, ownerBandId, ownDiyRecord, ownStandIn,
 } from '../ui/gameLogic.js';
 import { toast } from '../ui/toasts.js';
 import { BriefingScreen } from './briefing.js';
@@ -114,7 +114,7 @@ import { data, getMode } from '../data.js';
 import { audio, resultSpeaker, resultVoiceSlot } from '../audio.js';
 import { useDocClass, FullscreenButton } from '../ui/device.js';
 // MatchEnded, PausedOverlay, the highlight styles and keepEarly live in ./game/*.js.
-import { HUD_HZ_MS, MERGE_HL, SEL_RANGE, cx } from './game/marks.js';
+import { HUD_HZ_MS, MERGE_HL, ACE_HL, SEL_RANGE, cx } from './game/marks.js';
 import { keepEarly, audioEarly } from './game/early.js';
 import { MatchEnded, PausedOverlay } from './game/overlays.js';
 import { inspectRange } from './game/range.js';
@@ -752,10 +752,12 @@ function MatchScreen() {
   // copy that deploys first — PRTS 卫戍协议/帮助 "若消耗已部署至作战区的干员，则发送至作战区对应位置", gameLogic.mergeTarget)
   const mergeAt = armedCard?.kind === 'chess' && editable && showPrep ? mergeTarget(priv, armedCard.id, gd.chess) : null;
   const mergeAtKey = mergeAt ? `${mergeAt.row},${mergeAt.col}` : '';
+  // 三阶远征's second rung (3 精锐 → 王牌) draws the same tile as a GOLD BORDER instead of the 精锐 merge's gold wash
+  const mergeIsAce = !!mergeAt && mergeProgress(priv, armedCard.id, gd.chess).ace === true;
   useEffect(() => {
     if (!view) return;
-    try { view.highlightTiles(mergeAt ? [[mergeAt.row, mergeAt.col]] : [], MERGE_HL); } catch { /* cosmetic */ }
-  }, [view, mergeAtKey]);
+    try { view.highlightTiles(mergeAt ? [[mergeAt.row, mergeAt.col]] : [], mergeIsAce ? ACE_HL : MERGE_HL); } catch { /* cosmetic */ }
+  }, [view, mergeAtKey, mergeIsAce]);
   const activeBonds = (priv?.bonds || []).filter((b) => b && b.active).length;
   const prevActive = useRef(activeBonds);
   useEffect(() => {

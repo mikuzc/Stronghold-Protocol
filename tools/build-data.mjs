@@ -3677,15 +3677,18 @@ const DEFAULT_ENEMY_MULTIPLIERS = {
 // ---- 三阶远征 (a deliberate deviation) -------------------------------------------------------------------------
 // The selectable round caps, the largest round the schedule carries, and the boss cadence "R14 and then every 7".
 // The union of the cadence and the caps keeps every selectable final round a 最终攻势: R28 → R30 is the one short gap,
-// because 30 is not on the 14 + 7k grid. See docs/design/match.md.
-const EXPEDITION_CAPS = [30, 60, 99];
+// because 30 is not on the 14 + 7k grid. `EXPEDITION_CAP_ROUNDS` holds only the ROUNDS the three caps end on — the ids
+// and the `sealed` flag live in shared/constants.js (the client's copy) and the mode's `expedition` block below.
+// See docs/design/match.md.
+const EXPEDITION_CAP_ROUNDS = [30, 99];
 const EXPEDITION_MAX_ROUND = 99;
 const EXPEDITION_BOSS_FIRST = 14;
 const EXPEDITION_BOSS_EVERY = 7;
+const EXPEDITION_SEAL_AT = 30;
 const EXPEDITION_BOSS_ROUNDS = (() => {
   const s = new Set();
   for (let r = EXPEDITION_BOSS_FIRST; r <= EXPEDITION_MAX_ROUND; r += EXPEDITION_BOSS_EVERY) s.add(r);
-  for (const c of EXPEDITION_CAPS) s.add(c);
+  for (const r of EXPEDITION_CAP_ROUNDS) s.add(r);
   return [...s].sort((a, b) => a - b);
 })();
 
@@ -3860,7 +3863,8 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
       enemyScale[r] = r <= 15 ? src.enemyScale[r] : expeditionEnemyScale(multipliers, src.type, 'NORMAL', r);
       combatTimeLimit[r] = rounds[r].combatTimeLimit;
     }
-    const cap0 = EXPEDITION_CAPS[0];
+    // the default cap's round is the mode's `lastRound`; `gamedata.expeditionCap` overrides it per room
+    const cap0 = EXPEDITION_CAP_ROUNDS[0];
     // 机变 drafts: the official cadence through R15, then one in the round before every 最终攻势. The 机变 offer table
     // is keyed by modeId and has no 三阶远征 entry, so those rounds take server/match/choices.js scheduleFor's
     // documented fallback (a supply draft) — [ASSUMED: extending the cadence is the maintainer's decision].
@@ -3875,13 +3879,16 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
       effectDescList: [
         '·3 名相同精锐干员合成【王牌】（精英三阶）',
         '·牌库全阶扩充，每个干员都有足够张数走完三阶',
-        `·回合上限可选：${EXPEDITION_CAPS.join(' / ')} 回合（开局选择）`,
+        '·回合上限可选：30 回合 / 无尽（难度持续上升）/ 无限（难度封顶），开局由创建者选择',
         `·第 ${EXPEDITION_BOSS_FIRST} 回合起每 ${EXPEDITION_BOSS_EVERY} 回合一次最终攻势，最后一回合必为最终攻势`,
         '·第 16 回合起沿用高难波次，敌方强度按官方曲线继续外推',
       ],
       unlockText: null,
       threeTier: true,
-      expedition: { caps: [...EXPEDITION_CAPS], maxRound: EXPEDITION_MAX_ROUND, bossFirst: EXPEDITION_BOSS_FIRST, bossEvery: EXPEDITION_BOSS_EVERY },
+      expedition: {
+        caps: ['30', 'endless', 'sealed'], defaultCap: '30', sealAt: EXPEDITION_SEAL_AT,
+        maxRound: EXPEDITION_MAX_ROUND, bossFirst: EXPEDITION_BOSS_FIRST, bossEvery: EXPEDITION_BOSS_EVERY,
+      },
       lastRound: cap0, bossRound: cap0, hiddenRound: null, bossRounds: [...EXPEDITION_BOSS_ROUNDS],
       rounds, enemyScale, combatTimeLimit, spRounds,
       poolCopies: { tiers: expeditionPoolCopies, overrides: expeditionStock },

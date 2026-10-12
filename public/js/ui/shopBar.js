@@ -54,7 +54,10 @@ const LOOKUPS = { getChess: (id) => data.lookup('chess', id), getItem: (id) => d
 export function mergeHint(priv, chessId) {
   const prog = mergeProgress(priv, chessId, LOOKUPS.getChess);
   if (!(prog.copies > 0 && prog.copies + 1 >= prog.need)) return null;
-  return mergeTarget(priv, chessId, LOOKUPS.getChess) ? t('精锐干员将出现在作战区原位置') : t('精锐干员将进入整备区');
+  const onBoard = !!mergeTarget(priv, chessId, LOOKUPS.getChess);
+  // 三阶远征's second rung produces the 王牌, not another 精锐 (shop.js mergeProgress `ace`)
+  if (prog.ace) return onBoard ? t('王牌将出现在作战区原位置') : t('王牌将进入整备区');
+  return onBoard ? t('精锐干员将出现在作战区原位置') : t('精锐干员将进入整备区');
 }
 
 /**

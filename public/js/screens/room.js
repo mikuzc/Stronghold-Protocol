@@ -12,7 +12,7 @@
 // Texts go through t() (docs/I18N.md).
 
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
-import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, MAX_SEATS, MAX_SPECTATORS, EXPEDITION_CAPS, EXPEDITION_DEFAULT_CAP } from '../../../shared/constants.js';
+import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, MAX_SEATS, MAX_SPECTATORS, EXPEDITION_CAPS, EXPEDITION_DEFAULT_CAP, expeditionCapOf } from '../../../shared/constants.js';
 import {
   html, Button, Icon, MicroLabel, PingPill, AvatarFrame, DifficultyTag, DifficultyIcon, Tooltip, confirmDialog, doctorNo,
 } from '../ui/components.js';
@@ -86,15 +86,15 @@ export function aiLastOption(room, myId) {
 
 /**
  * The 三阶远征 round cap (room.setExpeditionCap, room.state.expeditionCap — this project's deviation, DESIGN §6.7). null
- * in every other mode; otherwise the picked cap (the first one when the server sends none) and whether this player may
+ * in every other mode; otherwise the picked cap id (the default when the server sends none) and whether this player may
  * change it — the host only, the others see it read-only.
  * @param {any} room room.state payload
  * @param {any} myId
- * @returns {{ cap: number, caps: number[], editable: boolean } | null}
+ * @returns {{ cap: string, caps: { id: string, rounds: number, sealed: boolean }[], editable: boolean } | null}
  */
 export function expeditionCapOption(room, myId) {
   if (!room || room.difficulty !== 'EXPEDITION') return null;
-  const cap = EXPEDITION_CAPS.includes(room.expeditionCap) ? room.expeditionCap : EXPEDITION_DEFAULT_CAP;
+  const cap = expeditionCapOf(room.expeditionCap) ? room.expeditionCap : EXPEDITION_DEFAULT_CAP;
   return { cap, caps: EXPEDITION_CAPS, editable: room.hostId != null && room.hostId === myId };
 }
 
@@ -236,12 +236,13 @@ function AiLastToggle({ option, busy, onToggle }) {
 /** The 三阶远征 round cap picker (that mode only): the host picks, everybody else sees the state. */
 function ExpeditionCapPicker({ option, busy, onPick }) {
   if (!option) return null;
+  const label = (c) => (c.sealed ? t('无限·难度封顶') : c.id === 'endless' ? t('无尽·难度递增') : t('{n} 回合', { n: c.rounds }));
   return html`<div class="dpick capick" role="radiogroup" aria-label=${t('回合上限')}>
     <span class="t-lo">${t('回合上限')}</span>
-    ${option.caps.map((c) => html`<button key=${c} type="button" role="radio" aria-checked=${option.cap === c ? 'true' : 'false'}
-        class=${`dpick__opt${option.cap === c ? ' is-active' : ''}`} disabled=${!option.editable || !!busy}
-        onClick=${() => option.editable && option.cap !== c && onPick(c)}>
-      ${c >= 99 ? t('无尽') : t('{n} 回合', { n: c })}
+    ${option.caps.map((c) => html`<button key=${c.id} type="button" role="radio" aria-checked=${option.cap === c.id ? 'true' : 'false'}
+        class=${`dpick__opt${option.cap === c.id ? ' is-active' : ''}`} disabled=${!option.editable || !!busy}
+        onClick=${() => option.editable && option.cap !== c.id && onPick(c.id)}>
+      ${label(c)}
     </button>`)}
     ${option.editable ? null : html`<span class="t-dim">${t('由创建者设置')}</span>`}
   </div>`;

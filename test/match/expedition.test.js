@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EXPEDITION_CAPS } from '../../shared/constants.js';
 import { validateC2S } from '../../shared/protocol.js';
+import { mergeProgress, mergeTarget, completesMerge } from '../../public/js/ui/gameLogic/shop.js';
 import { isBossRoundOf, bossRoundShown } from '../../public/js/ui/gameLogic/camera.js';
 import { GameData } from '../../server/match/gamedata.js';
 import { DATA, makeMatch, chessOfTier } from './harness.js';
@@ -47,38 +48,66 @@ test('三阶远征: the mode carries the flag and the official modes do not', ()
   assert.equal(off.mergeCount('chess_char_1_01_b'), 0);
 });
 
-test('三阶远征: the selectable cap sets the last round, is always a 最终攻势, and only the last one ends the run', () => {
-  for (const [cap, expected] of [[30, [14, 21, 28, 30]], [60, [14, 21, 28, 30, 35, 42, 49, 56, 60]], [99, null]]) {
-    const gd = new GameData(DATA, 'mode_single_expedition', { expeditionCap: cap });
-    assert.equal(gd.expeditionCap, cap);
-    assert.equal(gd.lastRound, cap);
+test('三阶远征: the three caps set the last round, every one is a 最终攻势, and only the last one ends the run', () => {
+  for (const entry of EXPEDITION_CAPS) {
+    const gd = new GameData(DATA, 'mode_single_expedition', { expeditionCap: entry.id });
+    assert.equal(gd.expeditionCapEntry.id, entry.id);
+    assert.equal(gd.expeditionCap, entry.rounds, `${entry.id}: rounds`);
+    assert.equal(gd.expeditionSealed, entry.sealed, `${entry.id}: sealed`);
+    assert.equal(gd.lastRound, entry.rounds);
     const rounds = gd.bossRounds;
-    assert.equal(gd.bossRound, cap, 'the last boss round is the cap');
-    assert.ok(rounds.includes(cap), `cap ${cap} is a boss round`);
+    assert.equal(gd.bossRound, entry.rounds, 'the last boss round is the cap');
+    assert.ok(rounds.includes(entry.rounds), `cap ${entry.id} is a boss round`);
     assert.equal(rounds[0], 14, 'the official first 最终攻势 stays at R14');
-    if (expected) assert.deepEqual(rounds, expected);
     // every round at 14 + 7k is a boss round, and only the last one finishes the match
     for (const r of rounds) {
       assert.equal(gd.isBossRound(r), true, `R${r} is a 最终攻势`);
       assert.equal(gd.isBossFight(r), true, `R${r} is a boss fight`);
-      assert.equal(gd.isFinalFightRound(r), r === cap, `R${r} ends the match only at the cap`);
+      assert.equal(gd.isFinalFightRound(r), r === entry.rounds, `R${r} ends the match only at the cap`);
     }
     // a normal round is neither
     assert.equal(gd.isBossFight(16), false);
     assert.equal(gd.isFinalFightRound(16), false);
     // the round data exists for every round the cap allows
-    for (const r of [1, 13, 15, 16, 29, cap]) {
+    for (const r of [1, 13, 15, 16, 29, entry.rounds]) {
       assert.ok(gd.roundCfg(r), `R${r} has a round config`);
       assert.ok(gd.enemyScale(r).hpMul >= 0.5, `R${r} has an enemy scale`);
     }
   }
+  // an unknown id falls back to the mode's own default cap
+  const bogus = new GameData(DATA, 'mode_single_expedition', { expeditionCap: 'nope' });
+  assert.equal(bogus.expeditionCapEntry.id, '30');
+  assert.equal(bogus.lastRound, 30);
   // no cap option and no expedition entry → the official answer
-  const off = new GameData(DATA, 'mode_single_normal', { expeditionCap: 60 });
+  const off = new GameData(DATA, 'mode_single_normal', { expeditionCap: 'endless' });
   assert.equal(off.expeditionCap, null);
+  assert.equal(off.expeditionCapEntry, null);
+  assert.equal(off.expeditionSealed, false);
   assert.equal(off.lastRound, 14);
   assert.deepEqual(off.bossRounds, [14]);
   assert.equal(off.isFinalFightRound(14), true);
   assert.equal(off.isFinalFightRound(15), true, 'the official hidden round still finishes the match');
+});
+
+test('无限 (sealed) freezes the enemy curve at the seal round; 无尽 (endless) keeps it rising', () => {
+  const sealed = new GameData(DATA, 'mode_single_expedition', { expeditionCap: 'sealed' });
+  const endless = new GameData(DATA, 'mode_single_expedition', { expeditionCap: 'endless' });
+  assert.equal(sealed.expeditionSealed, true);
+  assert.equal(endless.expeditionSealed, false);
+  assert.equal(sealed.lastRound, endless.lastRound, 'both run the same number of rounds');
+  const at30 = sealed.enemyScale(30);
+  // the seal starts AT the round: R30 keeps its own numbers (it is not clamped early), R31 onward reuse them
+  assert.notDeepEqual(at30, sealed.enemyScale(29), 'R30 is not clamped to an earlier round');
+  assert.deepEqual(sealed.enemyScale(31), at30, 'R31 onward reuse the R30 numbers');
+  for (const r of [31, 50, 99]) {
+    assert.deepEqual(sealed.enemyScale(r), at30, `sealed R${r} stays at the R30 numbers`);
+    assert.ok(endless.enemyScale(r).hpMul > at30.hpMul, `endless R${r} keeps rising`);
+    assert.ok(endless.enemyScale(r).atkMul > at30.atkMul, `endless R${r} keeps rising (atk)`);
+  }
+  // the seal must not leak into an official mode: its own rounds read exactly as they always did
+  const off = new GameData(DATA, 'mode_single_normal', { expeditionCap: 'sealed' });
+  assert.equal(off.expeditionSealed, false);
+  assert.deepEqual(off.enemyScale(14), new GameData(DATA, 'mode_single_normal').enemyScale(14));
 });
 
 test('三阶远征: the pool carries a whole ladder for every base, and the official pool is untouched', () => {
@@ -174,8 +203,8 @@ test('the client boss-round helpers read every 最终攻势, and fall back to th
 });
 
 test('the 三阶远征 round cap is validated at the wire and is the only accepted shape', () => {
-  for (const cap of EXPEDITION_CAPS) assert.equal(validateC2S({ t: 'room.setExpeditionCap', cap }), null, `cap ${cap}`);
-  for (const bad of [0, 1, 45, 100, -30, '30', null, undefined, 30.5]) {
+  for (const c of EXPEDITION_CAPS) assert.equal(validateC2S({ t: 'room.setExpeditionCap', cap: c.id }), null, `cap ${c.id}`);
+  for (const bad of [0, 1, 30, 45, 100, -30, '45', '', 'SEALED', '30 ', null, undefined, 30.5]) {
     assert.notEqual(validateC2S({ t: 'room.setExpeditionCap', cap: bad }), null, `cap ${JSON.stringify(bad)} rejected`);
   }
 });
@@ -185,10 +214,40 @@ test('三阶远征 end to end: a whole match runs through R30 with the real sim,
   // at R14 / R21 / R28 must each resume to the next round instead of finishing the match. roundsPassed >= 29 is that
   // evidence (a defeat in the R14 boss would report 13).
   for (const seed of [1, 2]) {
-    const { res } = runFull({ mode: 'solo', difficulty: 'EXPEDITION', humans: 1, bots: 0, seed, boostLp: 4000, expeditionCap: 30 });
+    const { res } = runFull({ mode: 'solo', difficulty: 'EXPEDITION', humans: 1, bots: 0, seed, boostLp: 4000, expeditionCap: '30' });
     assert.ok(res, `seed ${seed}: the match ended`);
     assert.ok(res.roundsPassed >= 29, `seed ${seed}: reached the final 最终攻势 (roundsPassed ${res.roundsPassed})`);
   }
+});
+
+test('the client merge helpers read the 王牌 rung only in a threeTier match', () => {
+  const base = 'chess_char_1_02_a', elite = 'chess_char_1_02_b', ace = 'chess_char_1_02_c';
+  assert.equal(DATA.chess[elite].aceChessId, ace, 'the fixture links the elite to its 王牌');
+  const getChess = (id) => DATA.chess[id] || null;
+  const priv = (threeTier) => ({
+    threeTier,
+    board: [{ kind: 'chess', id: elite, golden: true, row: 3, col: 2, dir: 'UP' }],
+    hand: [{ kind: 'chess', id: elite, golden: true }, { kind: 'chess', id: base }],
+    temp: [],
+  });
+  // 三阶远征: two 精锐 owned, so one more completes the 王牌 — and the tile is an ELITE's
+  const on = priv(true);
+  assert.deepEqual(mergeProgress(on, elite, getChess), { copies: 2, need: 3, ace: true });
+  assert.deepEqual(mergeTarget(on, elite, getChess), { row: 3, col: 2, dir: 'UP' });
+  assert.equal(completesMerge(on, { kind: 'chess', id: elite }, { getChess }), true);
+  // an official match: the elite stays terminal, exactly as before this change
+  const off = priv(false);
+  assert.deepEqual(mergeProgress(off, elite, getChess), { copies: 0, need: 3 });
+  assert.equal(mergeProgress(off, elite, getChess).ace, undefined);
+  assert.equal(mergeTarget(off, elite, getChess), null);
+  assert.equal(completesMerge(off, { kind: 'chess', id: elite }, { getChess }), false);
+  // the normal rung is untouched either way, and the 王牌 itself never merges
+  assert.deepEqual(mergeProgress(on, base, getChess), { copies: 1, need: 3 });
+  assert.equal(completesMerge(on, { kind: 'chess', id: base }, { getChess }), false);
+  assert.equal(mergeProgress(on, ace, getChess).copies, 0);
+  assert.equal(completesMerge(on, { kind: 'chess', id: ace }, { getChess }), false);
+  // the private frame is what carries the flag to the client
+  assert.equal(typeof on.threeTier, 'boolean');
 });
 
 test('the official mode keeps its two forms: 9 普通 give three 精锐 and never a 王牌', () => {

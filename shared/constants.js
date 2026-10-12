@@ -24,11 +24,19 @@ export const NAME_MAX_LEN = 12;
 export const DIFFICULTIES = ['FUNNY', 'NORMAL', 'HARD', 'ABYSS', 'EXPEDITION'];
 export const DIFFICULTY_NAMES = { FUNNY: N_('标准模拟'), NORMAL: N_('险境模拟'), HARD: N_('绝境模拟'), ABYSS: N_('终极模拟'), EXPEDITION: N_('三阶远征') };
 export const DIFFICULTY_COLORS = { FUNNY: '#f6a329', NORMAL: '#e85a1a', HARD: '#e73118', ABYSS: '#ff0024', EXPEDITION: '#7c4dff' };
-// 三阶远征 only (a deliberate deviation, docs/design/match.md): the round caps the room picks at match start. The
-// value is the last round played, and every one of them is a 最终攻势 round (server/match/gamedata.js bossRounds).
-export const EXPEDITION_CAPS = [30, 60, 99];
-export const EXPEDITION_DEFAULT_CAP = EXPEDITION_CAPS[0];
-export const isExpeditionCap = (v) => EXPEDITION_CAPS.includes(v);
+// 三阶远征 only (a deliberate deviation, docs/design/match.md): the three round caps the room picks at match start.
+//  - `30`      play 30 rounds, then the final 最终攻势 settles the run
+//  - `endless` no round limit; the enemy curve keeps rising, so the run is lost in the end by construction
+//  - `sealed`  no round limit, but the enemy curve is FROZEN at `sealAt`: the difficulty stops growing
+// `rounds` is the round the cap ends on (always a 最终攻势: server/match/gamedata.js bossRounds). The wire value is the id.
+export const EXPEDITION_CAPS = [
+  { id: '30', rounds: 30, sealed: false },
+  { id: 'endless', rounds: 99, sealed: false },
+  { id: 'sealed', rounds: 99, sealed: true, sealAt: 30 },
+];
+export const EXPEDITION_DEFAULT_CAP = '30';
+export const expeditionCapOf = (id) => EXPEDITION_CAPS.find((c) => c.id === id) || null;
+export const isExpeditionCap = (v) => typeof v === 'string' && expeditionCapOf(v) !== null;
 
 // modeId in data/config.json = `mode_${type}_${difficulty.toLowerCase()}` with type single|multi
 export const modeIdFor = (roomMode, difficulty) =>

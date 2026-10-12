@@ -14,6 +14,7 @@
 import { getConfig, getMode } from '../data.js';
 import { isShopItem } from '../sim/simdata.js';
 import { standInRecord } from '../../shared/standIn.js';
+import { EXPEDITION_CAPS, expeditionCapOf, isExpeditionCap } from '../../shared/constants.js';
 
 const own = (map, id) => (map && typeof map === 'object' && typeof id === 'string' && Object.hasOwn(map, id) && map[id] && typeof map[id] === 'object' ? map[id] : null);
 const numOr = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -393,14 +394,25 @@ export class GameData {
 
   get isSolo() { return this.mode.type === 'SINGLE' || /^mode_single_/.test(this.modeId || ''); }
   get difficulty() { return this.mode.difficulty || (this.modeId ? String(this.modeId).split('_').pop().toUpperCase() : 'NORMAL'); }
-  /** The 三阶远征 round cap the room picked (30 / 60 / 99), or null outside such a mode. */
-  get expeditionCap() {
+  /**
+   * The 三阶远征 cap entry the room picked (`{ id, rounds, sealed, sealAt }` from shared/constants.js
+   * EXPEDITION_CAPS), or null outside such a mode. The room sends the id; without one the mode's own default applies.
+   */
+  get expeditionCapEntry() {
     const e = this.mode.expedition;
-    const caps = e && Array.isArray(e.caps) ? e.caps.filter((n) => Number.isInteger(n) && n > 0) : [];
-    if (!caps.length) return null;
-    const sel = Number.isInteger(this.opts.expeditionCap) ? this.opts.expeditionCap : this.mode.lastRound;
-    return caps.includes(sel) ? sel : (caps.includes(this.mode.lastRound) ? this.mode.lastRound : caps[caps.length - 1]);
+    if (!e || !Array.isArray(e.caps) || !e.caps.length) return null;
+    const sel = isExpeditionCap(this.opts.expeditionCap) ? this.opts.expeditionCap : e.defaultCap;
+    return expeditionCapOf(sel) || expeditionCapOf(e.defaultCap) || EXPEDITION_CAPS[0];
   }
+
+  /** The round the 三阶远征 cap ends on, or null outside such a mode. */
+  get expeditionCap() { const c = this.expeditionCapEntry; return c ? c.rounds : null; }
+
+  /**
+   * 无限 (the `sealed` cap): the enemy curve is FROZEN at `sealAt` instead of rising forever, so an endless run stops
+   * getting harder and becomes a sandbox. False for the ordinary caps and for every official mode.
+   */
+  get expeditionSealed() { const c = this.expeditionCapEntry; return !!(c && c.sealed); }
 
   get lastRound() {
     const cap = this.expeditionCap;
@@ -523,9 +535,13 @@ export class GameData {
    * Official enemy multipliers of round r (config enemyScale: the PRTS table + 终极 speed ×1.15 from R3). `supplyHpMul`
    * (only when ≠ 1: co-op 终极 R5–R15) = the share of hpMul from 补给线 / 补给线II (config `supplyHp`), effects whose
    * `enemy_exclude` leaves out the 14 器物 hit-count keys — they take hpMul / supplyHpMul (archetypes.js `times`).
+   * The 无限 cap (三阶远征 `sealed`) clamps r to its `sealAt`, freezing the curve there — the difficulty stops growing
+   * while the rounds go on.
    */
   baseEnemyScale(r) {
-    const e = this.mode.enemyScale && this.mode.enemyScale[String(r)];
+    const seal = this.expeditionSealed ? (this.expeditionCapEntry.sealAt ?? null) : null;
+    const rr = seal !== null && Number.isInteger(seal) && r > seal ? seal : r;
+    const e = this.mode.enemyScale && this.mode.enemyScale[String(rr)];
     if (!e || typeof e !== 'object') return { hpMul: 1, atkMul: 1, speedMul: 1 };
     const supply = numOr(e.supplyHp, 1);
     return {
