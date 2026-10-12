@@ -310,6 +310,37 @@ test('人事部文档: the effect AND the card face differ per mode, and each is
   }
 });
 
+test('the reward and trophy tables cover the expedition, and every official row is unchanged', () => {
+  const rw = DATA.config.rewards.baseByRoundsPassed;
+  const rounds = rw.map((r) => r.round);
+  assert.deepEqual(rounds, [...rounds].sort((a, b) => a - b), 'rewardFor takes the LAST row, so the table must ascend');
+  // the official rows keep their official counts
+  for (const [r, n] of Object.entries({ 1: 10, 10: 100, 11: 120, 12: 140, 13: 160, 14: 200 })) {
+    assert.equal(rw.find((x) => x.round === Number(r)).count, n, `R${r}`);
+  }
+  // every round a 三阶远征 run can report has a row, and past R14 the table keeps growing
+  for (const cap of EXPEDITION_CAPS) {
+    for (const passed of [cap.rounds, cap.rounds + 1]) {
+      assert.ok(rw.filter((x) => x.round <= passed).pop(), `a reward row covers ${passed} rounds`);
+    }
+  }
+  assert.equal(rw.find((x) => x.round === 15).count, 200, 'R15 is the OFFICIAL hidden round: it keeps the official 200');
+  assert.ok(rw.find((x) => x.round === 31).count > 200, 'a 30-cap clear pays more than the R14 row');
+  assert.equal(rw.find((x) => x.round === 99).count, 1880, 'the largest row (the 无尽/无限 cap round)');
+  // trophies: `trophiesFor` stops at the FIRST row covering roundsPassed, so the official prefix must be intact
+  const tr = DATA.config.trophies.byRoundsPassed;
+  assert.deepEqual(tr.slice(0, 5).map((r) => r.maxRound), [4, 8, 11, 13, 14], 'the official prefix is unchanged');
+  assert.deepEqual(tr[4], { maxRound: 14, FUNNY: 3, NORMAL: 4, HARD: 5, ABYSS: 6 });
+  const maxRounds = tr.map((r) => r.maxRound);
+  assert.deepEqual(maxRounds, [...maxRounds].sort((a, b) => a - b), 'ascending');
+  for (const cap of EXPEDITION_CAPS) {
+    assert.ok(tr.some((r) => r.maxRound >= cap.rounds + 1), `a trophy row covers ${cap.rounds + 1}`);
+  }
+  // an official run still reads its own row (R14 solo 标准 walks the official 14 rows only)
+  const officialRow = tr.find((r) => 14 <= r.maxRound);
+  assert.equal(officialRow.maxRound, 14, 'an R14 official clear still lands on the official row');
+});
+
 test('the official mode keeps its two forms: 9 普通 give three 精锐 and never a 王牌', () => {
   const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', seed: 11 }).start();
   h.toPrep(1);

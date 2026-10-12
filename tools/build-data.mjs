@@ -3954,6 +3954,29 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
     comment_6: { stat: 'fundsSpent', rule: 'max', text: '消耗资金最多' },
   };
   const trophies = ctx.research.core?.trophiesPerClear;
+  // 三阶远征 [ASSUMED — the maintainer left these numbers to me]: rows past the official R14 clear, so a 30 / 99-round
+  // run is not paid at the R14 rate. `results.js trophiesFor` takes the FIRST row whose maxRound covers roundsPassed, so
+  // appending larger rows cannot change an official mode (its roundsPassed is at most 15). Trophies stay co-op only
+  // (`trophies.multiOnly`, `trophiesFor` returns 0 for solo) — that is the official rule.
+  const expeditionTrophyRows = [
+    { maxRound: 18, FUNNY: 3, NORMAL: 4, HARD: 5, ABYSS: 6 },
+    { maxRound: 24, FUNNY: 4, NORMAL: 5, HARD: 6, ABYSS: 7 },
+    { maxRound: 31, FUNNY: 5, NORMAL: 6, HARD: 7, ABYSS: 8 },
+    { maxRound: 100, FUNNY: 6, NORMAL: 7, HARD: 8, ABYSS: 9 },
+  ];
+  // The official reward table stops at R14 (200 tokens). 三阶远征 [ASSUMED]: continue the R11–R13 slope (+20 a round)
+  // from R16 on. R15 is the OFFICIAL 隐秘核心 round (`bossRound + 1`, which an official hidden clear reports) and must
+  // keep the official 200, or an official clear would move in the golden corpus; growth therefore starts at R16, which
+  // no official mode can reach (its largest roundsPassed is 15). `results.js rewardFor` takes the LAST row at or below
+  // roundsPassed, so a run that also clears the 无尽/无限 隐秘核心 (R100) holds the R99 value instead of inventing one.
+  const officialRewards = (Array.isArray(act.baseRewardDataList) ? act.baseRewardDataList : Object.values(act.baseRewardDataList || {}))
+    .map((r) => ({ round: r.round, count: r.item?.count ?? 0, dailyPoint: r.dailyMissionPoint ?? 0 }));
+  const lastReward = officialRewards[officialRewards.length - 1] || { round: 0, count: 0 };
+  const expeditionRewards = [];
+  for (let r = lastReward.round + 1; r <= EXPEDITION_MAX_ROUND; r++) {
+    const count = lastReward.count + (r - (lastReward.round + 1)) * 20;
+    expeditionRewards.push({ round: r, count, dailyPoint: count });
+  }
   const steps = Array.isArray(ac.enterStepList) ? ac.enterStepList : Object.values(ac.enterStepList || {});
   const step = (t) => steps.find((x) => x.stepType === t);
   return {
@@ -4028,6 +4051,7 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
         { maxRound: 11, FUNNY: 2, NORMAL: 2, HARD: 2, ABYSS: 2 },
         { maxRound: 13, FUNNY: 2, NORMAL: 3, HARD: 3, ABYSS: 3 },
         { maxRound: 14, FUNNY: 3, NORMAL: 4, HARD: 5, ABYSS: 6 },
+        ...expeditionTrophyRows,
       ],
       hiddenCore: { FUNNY: null, NORMAL: 5, HARD: 7, ABYSS: 8 },
       multiOnly: true, source: trophies ? 'research 01-core-data trophiesPerClear' : 'built-in',
@@ -4036,7 +4060,7 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
     roundScores: (Array.isArray(ac.roundScoreDataList) ? ac.roundScoreDataList : Object.values(ac.roundScoreDataList || {})).map((r) => ({ round: r.round, score: r.score })),
     rewards: {
       itemId: (Array.isArray(act.baseRewardDataList) ? act.baseRewardDataList : Object.values(act.baseRewardDataList || {}))[0]?.item?.id || null,
-      baseByRoundsPassed: (Array.isArray(act.baseRewardDataList) ? act.baseRewardDataList : Object.values(act.baseRewardDataList || {})).map((r) => ({ round: r.round, count: r.item?.count ?? 0, dailyPoint: r.dailyMissionPoint ?? 0 })),
+      baseByRoundsPassed: [...officialRewards, ...expeditionRewards],
       formula: 'baseByRoundsPassed[roundsPassed].count * difficultyFactor[difficulty] * modeFactor[type]',
       difficultyFactor: act.difficultyFactorInfo, modeFactor: act.modeFactorInfo,
     },

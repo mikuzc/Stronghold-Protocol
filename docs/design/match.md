@@ -157,6 +157,13 @@ generated modes `mode_single_expedition` / `mode_multi_expedition` add a third:
   one). `data/choices.json` carries a matching `schedule[modeId]` entry — the `supply` family with `supplyTiers: [6, 6]`,
   so the ordinary 机变 queue (`choices.js scheduleFor` → `generateDraft`, PHASE.SP_DRAFT) hands out tier-6 equipment with
   no engine change.
+- **Rewards and trophies cover the long run.** Both tables stopped at R14, so a 30 / 99-round clear would have been paid
+  the R14 row (`results.js rewardFor` / `trophiesFor`). They are now extended [ASSUMED — the maintainer left the numbers
+  to me]: `rewards.baseByRoundsPassed` continues the R11–R13 slope (+20 a round) from R15 to R99, and
+  `trophies.byRoundsPassed` gains rows at maxRound 18 / 24 / 31 / 100. Both tables are read positionally — `rewardFor`
+  takes the LAST row at or below `roundsPassed`, `trophiesFor` the FIRST row covering it — so appending larger rows
+  cannot move an official mode's payout, and every official row keeps its official value. The 无尽/无限 隐秘核心 (R100)
+  holds the R99 reward rather than inventing a row past it. Trophies remain co-op only (the official `multiOnly`).
 - **Not in scope.** Nothing: the 机变 offer table now carries a 三阶远征 entry of its own.
 
 Every official mode is untouched: `threeTier`, `bossRounds`, `poolCopies` and `expedition` are written only on the two
