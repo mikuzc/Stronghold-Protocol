@@ -9,7 +9,7 @@
 
 import { html, Icon, Tabs, MicroLabel } from './components.js';
 import { Img, UnitThumb, BondGlyph, BandIcon, RichText, GIcon } from './gameComponents.js';
-import { groupEnemies, factionTypes, briefingBondTip } from './gameLogic.js';
+import { groupEnemies, factionTypes, briefingBondTip, bossRoundShown } from './gameLogic.js';
 import { matchInfoModel, DiyBannedLine } from './matchInfo.js';
 import { factionIconUrl } from './assetUrls.js';
 import { data } from '../data.js';
@@ -55,7 +55,7 @@ function EnemiesTab({ pub, priv, onEnemy }) {
     ${boss ? html`<div class="eboss">
       <${UnitThumb} kind="enemy" id=${boss.enemyKey} size="md" />
       <div><${MicroLabel} tone="gold">${t('ENEMY LEADER // 敌方领袖')}</${MicroLabel}><b>${boss.name}</b>
-        <span class="t-lo">${t('第 {r} 回合 · 最终攻势', { r: data.get('config')?.modes?.[pub.modeId]?.bossRound ?? pub.lastRound ?? 14 })}</span></div>
+        <span class="t-lo">${t('第 {r} 回合 · 最终攻势', { r: bossRoundShown(pub, data.get('config')?.modes?.[pub.modeId]) })}</span></div>
     </div>` : null}
   </div>`;
 }

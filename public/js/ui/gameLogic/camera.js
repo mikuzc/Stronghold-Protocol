@@ -6,6 +6,37 @@ import { int, isObj } from './shared.js';
 
 
 /**
+ * True when round `r` is played as a boss fight (最终攻势 / 隐秘核心). `pub.bossRounds` lists every 最终攻势 of the match
+ * — a 三阶远征 mode holds several (R14 and then every 7 rounds) — and is the authority; the official scalars are the
+ * fallback for a frame from an older server or a dev fixture without the list.
+ * @param {any} pub m.public @param {unknown} r
+ * @returns {boolean}
+ */
+export function isBossRoundOf(pub, r) {
+  if (!Number.isInteger(r) || r <= 0) return false;
+  const list = Array.isArray(pub?.bossRounds) ? pub.bossRounds : null;
+  if (list) return list.includes(r) || r === pub.hiddenRound;
+  return r === pub.bossRound || r === pub.hiddenRound;
+}
+
+/**
+ * The round number a boss card names. A 三阶远征 match holds several 最终攻势, so it shows the NEXT one at or after the
+ * current round; every official mode has one and keeps showing it. Falls back to the mode's scalar, then `lastRound`,
+ * then the historical 14 for a frame or a fixture without either.
+ * @param {any} pub m.public @param {any} mode config.modes[modeId]
+ * @returns {number}
+ */
+export function bossRoundShown(pub, mode) {
+  const list = Array.isArray(pub?.bossRounds) && pub.bossRounds.length ? pub.bossRounds
+    : Array.isArray(mode?.bossRounds) && mode.bossRounds.length ? mode.bossRounds : null;
+  if (list) {
+    const r = Number.isInteger(pub?.round) ? pub.round : 0;
+    return list.find((b) => Number.isInteger(b) && b >= r) ?? list[list.length - 1];
+  }
+  return mode?.bossRound ?? pub?.lastRound ?? 14;
+}
+
+/**
  * Camera of the own prep board (research 09 §1.2 "Final Assault, right side", DESIGN §15): in the prep of a boss round
  * (最终攻势 / 隐秘核心: `pub.round` is `bossRound` or `hiddenRound`) the pieces stand on the player's half of the shared
  * boss field — `{ kind: 'bossPrep', opts: { side } }`; the side follows the server's pairing (server/match/
@@ -18,7 +49,7 @@ import { int, isObj } from './shared.js';
 export function prepCamera(pub, myId) {
   const normal = { kind: 'prep', opts: { rect: { ...GEO.NORMAL_RECT }, side: 'L' } };
   const r = pub?.round;
-  if (!Number.isInteger(r) || r <= 0 || !(r === pub.bossRound || r === pub.hiddenRound)) return normal;
+  if (!isBossRoundOf(pub, r)) return normal;
   const alive = (Array.isArray(pub.players) ? pub.players : []).filter((p) => isObj(p) && p.alive !== false)
     .sort((a, b) => int(a.seat, 99) - int(b.seat, 99));
   const idx = alive.findIndex((p) => p.playerId === myId);
@@ -45,7 +76,7 @@ export function teamFrameIds(pub, myId) {
   const me = players.find((p) => p.playerId === myId);
   if (!me || me.alive === false) return none;
   const r = pub.round;
-  const bossRound = Number.isInteger(r) && r > 0 && (r === pub.bossRound || r === pub.hiddenRound);
+  const bossRound = isBossRoundOf(pub, r);
   if (pub.phase === PHASE.FINAL_ASSAULT || pub.phase === PHASE.HIDDEN_CORE) {
     const f = (Array.isArray(pub.fields) ? pub.fields : []).find((x) => isObj(x) && (x.kind === 'boss' || x.kind === 'hidden') && Array.isArray(x.players) && x.players.includes(myId));
     return f && f.players.length > 1 ? new Set(f.players) : none;

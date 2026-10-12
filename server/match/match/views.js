@@ -86,6 +86,9 @@ export class MatchViews {
       hiddenBossId: this.hiddenBossId,
       bossRound: this.gd.bossRound,
       hiddenRound: this.gd.hiddenRound,
+      // every 最终攻势 round of the match (a 三阶远征 mode holds several; the official modes one, equal to bossRound).
+      // The client reads this for the boss-prep camera, the team frame and the boss briefing label.
+      bossRounds: this.gd.bossRounds,
       spRound: this.gd.spRounds().includes(this.round),
       // DESIGN §14: 'client' = battles are simulated by the browsers (b.start specs), 'server' = legacy streaming
       combatMode: this.clientCombat ? 'client' : 'server',

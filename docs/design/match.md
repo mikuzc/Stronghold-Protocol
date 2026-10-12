@@ -114,12 +114,15 @@ generated modes `mode_single_expedition` / `mode_multi_expedition` add a third:
   table (5阶 8 / 6阶 5) cannot supply. The mode carries `poolCopies { tiers, overrides }`, which `gamedata.poolCopies`
   consults before the global tables — per key, so the official values stay byte-for-byte and an operator the mode does
   not list keeps its own.
-- **The rounds.** `expedition.caps` = 30 / 60 / 99; the room picks one (`room.setExpeditionCap` → Match
-  `opts.expeditionCap` → `gamedata.expeditionCap`) and it sets `lastRound`. `bossRounds` holds R14 and then every 7
-  rounds, plus every cap value (R28 → R30 is the one short gap: 30 is not on the 14 + 7k grid), and only the LAST one
-  finishes the match — `gamedata.isFinalFightRound`, so `bossRounds.js _finishFinal` resumes the loop after an
-  intermediate 最终攻势 (`_resumeAfterBoss`) instead of ending it. `bossRound` keeps its scalar meaning for
-  `results.js` / `audit.js` / the client: it is the final boss round.
+- **The rounds.** `expedition.caps` = 30 / 60 / 99; the room picks one (`room.setExpeditionCap` → the room screen's
+  `ExpeditionCapPicker`, host-only → Match `opts.expeditionCap` → `gamedata.expeditionCap`) and it sets `lastRound`.
+  `bossRounds` holds R14 and then every 7 rounds, plus every cap value (R28 → R30 is the one short gap: 30 is not on the
+  14 + 7k grid), and only the LAST one finishes the match — `gamedata.isFinalFightRound`, so `bossRounds.js
+  _finishFinal` resumes the loop after an intermediate 最终攻势 (`_resumeAfterBoss`) instead of ending it. `bossRound`
+  keeps its scalar meaning for `results.js` / `audit.js`: it is the final boss round. The public frame publishes the
+  whole `bossRounds` list, which the client reads through `isBossRoundOf` (the boss-prep camera and the team frame, so
+  R21 / R28 frame and fold like R14) and `bossRoundShown` (the boss briefing and the enemy drawer name the NEXT
+  round).
 - **The waves.** R1–R13 are the official round data; R15+ cycle the three hardest normal templates (R11 `h04`, R12
   `h05`, R13 `h06`). `enemyScale` continues the official curve — `atk = atkBase·1.1^k`, `hp = hpBase·1.2^k·extra`, `k`
   advancing at the mean step of the official `k` array — because `gamedata.baseEnemyScale` answers 1/1 for a round with

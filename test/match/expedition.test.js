@@ -4,6 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EXPEDITION_CAPS } from '../../shared/constants.js';
+import { validateC2S } from '../../shared/protocol.js';
+import { isBossRoundOf, bossRoundShown } from '../../public/js/ui/gameLogic/camera.js';
 import { GameData } from '../../server/match/gamedata.js';
 import { DATA, makeMatch, chessOfTier } from './harness.js';
 
@@ -144,6 +146,37 @@ test('三阶远征: an ace never merges further, and holding three elites is imp
   assert.equal(ps.countCopies(elite), 0, 'never three at once');
   assert.equal(ps.countCopies(ace), 1);
   assert.equal(ps.completesChessMerge(ace), false);
+});
+
+test('the client boss-round helpers read every 最终攻势, and fall back to the official scalars', () => {
+  // a 三阶远征 frame: the list is the authority, so the boss-prep camera and the team frame fire at R21 / R28 too
+  const exp = { round: 21, bossRound: 30, hiddenRound: null, bossRounds: [14, 21, 28, 30] };
+  assert.equal(isBossRoundOf(exp, 14), true);
+  assert.equal(isBossRoundOf(exp, 21), true);
+  assert.equal(isBossRoundOf(exp, 28), true);
+  assert.equal(isBossRoundOf(exp, 20), false);
+  assert.equal(isBossRoundOf(exp, 30), true);
+  // the boss card names the NEXT one, not the last
+  assert.equal(bossRoundShown({ ...exp, round: 15 }, null), 21);
+  assert.equal(bossRoundShown({ ...exp, round: 21 }, null), 21);
+  assert.equal(bossRoundShown({ ...exp, round: 29 }, null), 30);
+  // a frame or a fixture without the list keeps the official answer
+  const official = { round: 14, bossRound: 14, hiddenRound: 15 };
+  assert.equal(isBossRoundOf(official, 14), true);
+  assert.equal(isBossRoundOf(official, 15), true, 'the hidden round is a boss fight');
+  assert.equal(isBossRoundOf(official, 13), false);
+  assert.equal(isBossRoundOf(official, 21), false);
+  assert.equal(bossRoundShown(official, { bossRound: 14 }), 14);
+  // the mode record alone is enough once the frame is gone (a dev fixture)
+  assert.equal(bossRoundShown({ round: 16, bossRounds: [14, 21] }, { bossRound: 21, bossRounds: [14, 21] }), 21);
+  assert.equal(bossRoundShown({}, undefined), 14, 'the historical fallback');
+});
+
+test('the 三阶远征 round cap is validated at the wire and is the only accepted shape', () => {
+  for (const cap of EXPEDITION_CAPS) assert.equal(validateC2S({ t: 'room.setExpeditionCap', cap }), null, `cap ${cap}`);
+  for (const bad of [0, 1, 45, 100, -30, '30', null, undefined, 30.5]) {
+    assert.notEqual(validateC2S({ t: 'room.setExpeditionCap', cap: bad }), null, `cap ${JSON.stringify(bad)} rejected`);
+  }
 });
 
 test('the official mode keeps its two forms: 9 普通 give three 精锐 and never a 王牌', () => {
