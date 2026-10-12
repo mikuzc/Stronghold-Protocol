@@ -102,7 +102,8 @@ test('every chess and 自选 form at every potential: the raw keyframes plus the
       forms++;
     }
   }
-  assert.equal(forms, 276);
+  // 259 = every stand-in form; a 王牌 has none (it is never fielded as a reserve — DESIGN §6.7)
+  assert.equal(forms, 259);
 });
 
 test('talent candidates at every potential: each talent is the last one unlocked with requiredPotentialRank ≤ the rank', { skip: !HAS_CACHE && 'no .cache/gamedata' }, () => {

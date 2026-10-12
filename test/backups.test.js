@@ -79,12 +79,12 @@ test('backups: the 17 stand-in characters, each with a form for every status it 
     assert.ok(u.name && u.profession && u.subProfessionId && u.subProfessionName && u.position, `${id}: identity`);
     assert.deepEqual(u.standsIn, ofType('NORMAL').filter((c) => c.backup.charId === id).map((c) => c.chessId).sort((a, b) => a.localeCompare(b, 'en', { numeric: true })), `${id}: standsIn`);
     assert.ok(u.assets.avatar === id && u.assets.spine === id && u.assets.portrait === `${id}_1` && u.assets.subProfIcon === `sub_${u.subProfessionId}_icon`, `${id}: assets`);
-    // reserves: E2 Lv1 / E2 Lv60 module 1 / the 王牌 row (E2 max level, its own skill ceiling, module 3); elites also
-    // the tier-6 elite row (module 3). A reserve's 王牌 is Lv70 skill 7 — the 原型干员's skcom_* skills have 7 levels, so
-    // 专精三 does not exist for them; an elite's is Lv90 skill 10 (专精三).
+    // reserves: E2 Lv1 / E2 Lv60 module 1; elites (the DIY prototypes) also the tier-6 elite row (module 3). NO 王牌 row:
+    // a 王牌 is the operator's own top form and is never fielded as a reserve, so no stand-in form is built for it
+    // (tools/build-data.mjs buildBackups skips an ace; standInRecord then answers null for it — DESIGN §6.7).
     assert.deepEqual(Object.keys(u.forms), ELITES.includes(id)
-      ? ['2/1/4/0', '2/60/7/1', '2/60/7/3', '2/90/10/3']
-      : ['2/1/4/0', '2/60/7/1', '2/70/7/3'], `${id}: forms`);
+      ? ['2/1/4/0', '2/60/7/1', '2/60/7/3']
+      : ['2/1/4/0', '2/60/7/1'], `${id}: forms`);
     for (const [key, f] of Object.entries(u.forms)) {
       const label = `${id}@${key}`;
       assert.equal(statusKey(f.status), key, label);
@@ -120,7 +120,7 @@ test('backups: the 17 stand-in characters, each with a form for every status it 
 
 test('backups: every NORMAL chess (both forms) resolves to its stand-in with the chess skill and module, as a chess-shaped record', () => {
   let n = 0;
-  for (const c of all.filter((x) => x.chessType === 'NORMAL')) {
+  for (const c of all.filter((x) => x.chessType === 'NORMAL' && !x.isAce)) {
     const r = standInRecord(c, backups);
     assert.ok(r, `${c.chessId}: stand-in`);
     n++;
@@ -157,7 +157,7 @@ test('backups: every NORMAL chess (both forms) resolves to its stand-in with the
     assert.deepEqual(def.bonds, c.bonds);
   }
   // every NORMAL chess in three forms: normal, elite and 王牌
-  assert.equal(n, 165);
+  assert.equal(n, 110);
   for (const c of all.filter((x) => x.chessType !== 'NORMAL')) assert.equal(standInRecord(c, backups), null, `${c.chessId}: PRESET / DIY have no stand-in`);
   // spot checks (zh_CN client data): 妮芙 → Stormeye S3 旋臂 + MAR-X; 莫斯提马 (T4) → Stormeye S2 without a module even
   // on the elite; 琳琅诗怀雅 → 预备干员-医疗 S3; 维娜·维多利亚 → 领主·Sharp S1 with LOR-X Lv3
@@ -174,7 +174,7 @@ test('backups: the stand-in numbers re-derived from the raw official tables', { 
   const CT = raw('character_table'), ST = raw('skill_table'), BE = raw('battle_equip_table');
   const PH = { PHASE_0: 0, PHASE_1: 1, PHASE_2: 2 };
   let n = 0;
-  for (const c of all.filter((x) => x.chessType === 'NORMAL')) {
+  for (const c of all.filter((x) => x.chessType === 'NORMAL' && !x.isAce)) {
     const r = standInRecord(c, backups);
     const ch = CT[c.backup.charId];
     // full potential for every unit (the owner's decision of 2026-10-07) is the plain keyframes here: no 原型干员 has a potential rank
@@ -198,7 +198,7 @@ test('backups: the stand-in numbers re-derived from the raw official tables', { 
     n++;
   }
   // every NORMAL chess (three forms) against the raw tables
-  assert.equal(n, 165);
+  assert.equal(n, 110);
 });
 
 test('DIY: four slots (tiers 5, 5, 6, 6) — price 4, sell 1, TIER_6, no 特质, no bonds; listed from the matching shop level', () => {

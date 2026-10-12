@@ -217,14 +217,14 @@ function skillCeilingOf(charTable, skillTable, charId, level) {
  * new `aceChessId` field, so the official two-form rules stay byte-identical when the third form is switched off.
  * @param {object} act the season's activity section (mutated)
  * @param {Record<string, any>} charTable character_table.json
- * @returns {{made:number, skipped:number, cappedByBackup:number, noE2:string[]}} what was injected (and why a chess got none)
+ * @returns {{made:number, skipped:number, cappedSkills:number, noE2:string[]}} what was injected (and why a chess got none)
  */
 function injectAceForms(act, charTable, skillTable) {
   const ccd = act.charChessDataDict;
   const lookup = act.chessNormalIdLookupDict;
   const shops = act.charShopChessDatas;
   const noE2 = [];
-  let made = 0, skipped = 0, cappedByBackup = 0, cappedSkills = 0;
+  let made = 0, skipped = 0, cappedSkills = 0;
   for (const [baseId, cd] of Object.entries(ccd)) {
     if (cd.isGolden) continue;
     const golden = cd.upgradeChessId ? ccd[cd.upgradeChessId] : null;
@@ -234,25 +234,16 @@ function injectAceForms(act, charTable, skillTable) {
     const shop = shops[baseId];
     const e2 = shop ? charTable[shop.charId]?.phases?.[2] : null;
     if (!e2) { noE2.push(baseId); skipped++; continue; }
-    // The status must be reachable by BOTH bodies a NORMAL chess can field: the operator (buildChess interpolates
-    // shop.charId) and its 补位 stand-in (buildBackups adds a form for backup.charId at exactly this status, and
-    // shared/standIn.js standInRecord looks it up by statusKey — no form, no stand-in). The 原型干员 are 4★ (E2 Lv70) or
-    // 6★ (Lv90), so a 6★ operator's Lv90 is out of reach for a 4★ reserve. The ace therefore takes the LOWER of the two
-    // E2 caps: the highest level both bodies actually have, i.e. 满级 for whichever one limits it. Taking the operator's
-    // cap alone left 14 NORMAL aces asking a Lv70 reserve for Lv90 — interpolateAttrs clamps, so the stored numbers were
-    // right, but the status named a level its body does not have (and read as an extrapolation, not a cap).
-    const backupE2 = shop.chessType === 'NORMAL' && shop.backupCharId ? charTable[shop.backupCharId]?.phases?.[2] : null;
-    const maxLevel = Math.min(e2.maxLevel, backupE2?.maxLevel ?? Infinity);
-    if (backupE2 && backupE2.maxLevel < e2.maxLevel) cappedByBackup++;
-    // Skill level: 专精三 (10) is the ceiling, but a body can only reach the levels its OWN skills have. The six
-    // 预备干员 carry the 7-level stand-in skills (skcom_*), so their 王牌 is 专精三-equivalent at level 7 — the highest
-    // that exists. buildSkill clamps silently, so asking for 10 would store level 7 while the status claimed 10; take the
-    // real ceiling instead. Only the same 14 chess are affected (a 4★/5★ reserve standing in for a 6★ operator).
-    const skillCap = Math.min(
-      ACE_SKILL_LEVEL,
-      skillCeilingOf(charTable, skillTable, shop.charId, maxLevel),
-      backupE2 ? skillCeilingOf(charTable, skillTable, shop.backupCharId, maxLevel) : ACE_SKILL_LEVEL,
-    );
+    // The 王牌 is the OPERATOR's own top form, so its status is the operator's own ceiling on both axes — no 补位.
+    // The reserve is a fallback for a chess the player does NOT own ("0.2.0 补位"), and merging nine copies into an ace
+    // is plainly the owner's prize; capping the ace by a 4★ reserve cost every owner 20 levels and 3 skill levels on the
+    // 14 chess whose reserve is a 4★ 原型干员 (E2 Lv70, and its [1] stand-in skill `skcom_*` has only 7 levels).
+    // `buildBackups` and its self-check therefore SKIP an ace: no form is built for it, `standInRecord` answers null
+    // (shared/standIn.js looks the form up by an exact statusKey), and the ace is fielded as the operator.
+    const maxLevel = e2.maxLevel;
+    // 专精三 (10) is the ceiling, but a body can only reach the levels its OWN skills have; that is the operator's own
+    // skill table rows here. 0 when the character has no unlocked skill at all (kept at 1 to stay a valid status).
+    const skillCap = Math.max(1, Math.min(ACE_SKILL_LEVEL, skillCeilingOf(charTable, skillTable, shop.charId, maxLevel) || ACE_SKILL_LEVEL));
     if (skillCap < ACE_SKILL_LEVEL) cappedSkills++;
     // Module: level 3 when the chess has one at all — the official `_b` precedent counts EITHER body's module
     // (charShopChessDatas: chess_char_5_14_a has no operator module but its stand-in 缪尔赛思 carries
@@ -280,7 +271,7 @@ function injectAceForms(act, charTable, skillTable) {
     golden.aceChessId = aceId;
     made++;
   }
-  return { made, skipped, cappedByBackup, cappedSkills, noE2 };
+  return { made, skipped, cappedSkills, noE2 };
 }
 
 /**
@@ -483,7 +474,7 @@ async function loadContext() {
   // The third chess form (王牌 `_c`) is synthesized onto the official rows before anything reads them (see
   // injectAceForms): every builder below then treats it as one more chess.
   const ace = injectAceForms(act, charTable, skillTable);
-  log(`third chess form: ${ace.made} 王牌 record(s) synthesized${ace.cappedByBackup ? `, ${ace.cappedByBackup} capped at the 补位 stand-in's E2 level` : ''}${ace.cappedSkills ? `, ${ace.cappedSkills} below 专精三 (their skills have fewer levels)` : ''}${ace.skipped ? `, ${ace.skipped} skipped` : ''}`);
+  log(`third chess form: ${ace.made} 王牌 record(s) synthesized${ace.cappedSkills ? `, ${ace.cappedSkills} below 专精三 (their skills have fewer levels)` : ''}${ace.skipped ? `, ${ace.skipped} skipped` : ''}`);
 
   // Note: summons/traps live in character_table (token_table.json only lists 4 unrelated traps).
 
@@ -1453,6 +1444,9 @@ function buildBackups(ctx, chess) {
   const standsIn = new Map();   // charId → base chess ids
   for (const c of Object.values(chess)) {
     const b = c.backup;
+    // a 王牌 is the operator's own top form and is never fielded as a reserve (injectAceForms takes the operator's own
+    // ceiling), so no stand-in form is built for it — shared/standIn.js then answers null and the ace uses the operator
+    if (c.isAce) continue;
     if (c.chessType !== 'NORMAL' || !b?.charId || b.charId === c.charId) continue;
     if (!charTable[b.charId]) { warn(`chess ${c.chessId}: backup ${b.charId} missing from character_table`); continue; }
     if (b.potRank !== 0) warn(`chess ${c.chessId}: backup potential ${b.potRank} (a 补位 stand-in fights without potential: not applied)`);
@@ -4255,7 +4249,7 @@ function validateAll(f) {
       const b = c.backup;
       if (c.chessType === 'PRESET' && b?.charId !== c.charId) err(`chess ${c.chessId}: a PRESET chess's backup must be itself`);
       if (c.chessType === 'DIY' && b?.charId !== null) err(`chess ${c.chessId}: a DIY slot has no backup`);
-      if (c.chessType !== 'NORMAL') continue;
+      if (c.chessType !== 'NORMAL' || c.isAce) continue;   // a 王牌 has no stand-in (see buildBackups)
       const r = standInRecord(c, backups);
       if (!r) { err(`chess ${c.chessId}: no stand-in ${b?.charId}@${statusKey(c.status)} in backups.json`); continue; }
       if (!r.stats || !Array.isArray(r.rangeGrid) || !r.trait) err(`chess ${c.chessId}: stand-in ${b.charId} without stats / range / trait`);

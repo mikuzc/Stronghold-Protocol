@@ -29,7 +29,8 @@ const BACKUPS = load('backups');
 const ds = getDefaultSource();
 const RESERVES = ['char_600_cpione', 'char_601_cguard', 'char_602_cdfend', 'char_603_csnipe', 'char_604_ccast', 'char_605_cmedic', 'char_606_csuppo', 'char_607_cspec'];
 /** Every chess record (normal + elite) a 预备干员 stands in for. */
-const RESERVE_RECORDS = Object.values(CHESS).filter((c) => c.chessType === 'NORMAL' && RESERVES.includes(c.backup.charId))
+// (a 王牌 is excluded: it is the operator's own top form, never fielded as a reserve — DESIGN §6.7)
+const RESERVE_RECORDS = Object.values(CHESS).filter((c) => c.chessType === 'NORMAL' && !c.isAce && RESERVES.includes(c.backup.charId))
   .sort((a, b) => a.chessId.localeCompare(b.chessId));
 const DUMMY = { enemy_dummy: enemyRec({ key: 'enemy_dummy', hp: 1e9, atk: 0, speed: 1 }) };
 const close = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-6, `${msg}: ${a} vs ${b}`);
@@ -41,8 +42,8 @@ test('data: every NORMAL chess record resolves to its stand-in def — the chess
   let n = 0;
   for (const c of Object.values(CHESS)) {
     const d = ds.getChess(c.chessId, { standIn: true });
-    if (c.chessType !== 'NORMAL') {
-      assert.equal(d, ds.getChess(c.chessId), `${c.chessId}: a ${c.chessType} chess fights as itself`);
+    if (c.chessType !== 'NORMAL' || c.isAce) {
+      assert.equal(d, ds.getChess(c.chessId), `${c.chessId}: a ${c.isAce ? '王牌' : c.chessType} chess fights as itself`);
       assert.equal(d?.standInFor, undefined);
       continue;
     }
@@ -64,7 +65,7 @@ test('data: every NORMAL chess record resolves to its stand-in def — the chess
     n++;
   }
   // normal, elite and 王牌 — three forms for every NORMAL chess a 预备干员 stands in for
-  assert.equal(n, 165);
+  assert.equal(n, 110);
 });
 
 test('data: a source without backups.json fields the chess itself (a browser that did not fetch it); with it, the stand-in', () => {
@@ -256,7 +257,7 @@ test('the eight 预备干员: every chess record they replace fields the stand-i
     assert.equal(h.b.errors.length, 0, `${where}: ${JSON.stringify(h.b.errors[0])}`);
     seen.add(charId);
   }
-  assert.equal(RESERVE_RECORDS.length, 42);
+  assert.equal(RESERVE_RECORDS.length, 28);
   assert.deepEqual([...seen].sort(), RESERVES);
 });
 

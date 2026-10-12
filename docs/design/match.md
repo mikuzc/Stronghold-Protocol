@@ -105,9 +105,14 @@ generated modes `mode_single_expedition` / `mode_multi_expedition` add a third:
   is 0 for it) and no official answer moves. `PlayerState._mergeChess` derives its rung from the incoming copy's own
   form (its second argument), `acquireChess` cascades — the third 精锐 becomes the 王牌 in the same gain — and
   `invariants.js` fails any state holding three elites at once. `maxPoolCopies` gives an ace the whole ladder's copies.
-- **The 王牌 data.** `tools/build-data.mjs injectAceForms` synthesises `_c` from the official tables: the LOWER of the
-  operator's and its 补位 stand-in's ceilings on both axes — E2 max level (4★ 70 / 5★ 80 / 6★ 90) and skill level
-  (10 = 专精三, or the 7 the `skcom_*` 预备干员 skills carry) — with `equipLevel` 3 when either body has a module. The
+- **The 王牌 data.** `tools/build-data.mjs injectAceForms` synthesises `_c` from the official tables at the OPERATOR's
+  own ceiling on both axes — its E2 max level (4★ 70 / 5★ 80 / 6★ 90) and its own skill ceiling (10 = 专精三; 0 such
+  chess exist today, every playable operator reaches 10) — with `equipLevel` 3 when either body has a module, and it is
+  **never fielded as the 补位 reserve**: `buildBackups` skips an ace, so no stand-in form is built for its status and
+  `shared/standIn.js standInRecord` answers null for it (the lookup is an exact `statusKey`). Taking the LOWER of the
+  operator's and the reserve's ceilings — the first implementation — cost every owner 20 levels and 3 skill levels on the
+  14 chess whose reserve is a 4★ 原型干员 (E2 Lv70, and its `[1]` stand-in skill `skcom_*` has only 7 levels); the ace is
+  what nine copies buy, so it carries the operator's own numbers and a not-owned ace simply fields the operator. The
   record is `visible: false` and `isGolden`, so it never enters the shop, the roster, cultivation or the golden corpus;
   `_b.aceChessId` is the link, written only where an ace exists (129 of 133 families — the four 自选 slots have none).
 - **The pool.** One ladder consumes `mergeCount(_b) × mergeCount(_a)` = 9 copies of a base, which the official per-tier
