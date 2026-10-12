@@ -1101,14 +1101,17 @@ test('突变细胞: a DEPLOYED carrier leaves the field — the new operator is 
   assert.ok(handIds(ps, 'item').includes(A('5_08')), 'the cell back in the hand');
 });
 
-test('人事部文档: deploy cap becomes 9 (a second copy adds nothing)', () => {
+test('人事部文档: +1 deploy slot per copy, stacking with NO ceiling (a deliberate deviation)', () => {
   const { m, ps, equip } = setup();
   const t = give(m, ps, plain((c) => c.tier === 1)[0], 'hand');
   assert.equal(ps.deployCap, 8);
   assert.deepEqual(equip(giveItem(m, ps, A('6_08')), t), OK);
   assert.equal(ps.deployCap, 9);
+  // the official card sets it to 9 and a second copy adds nothing; the deviation makes every copy +1 forever
   assert.deepEqual(equip(giveItem(m, ps, A('6_08')), t), OK);
-  assert.equal(ps.deployCap, 9);
+  assert.equal(ps.deployCap, 10);
+  assert.deepEqual(equip(giveItem(m, ps, A('6_08')), t), OK);
+  assert.equal(ps.deployCap, 11);
   cover(A('6_08'), B('6_08'));
 });
 

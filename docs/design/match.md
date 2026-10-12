@@ -139,9 +139,14 @@ generated modes `mode_single_expedition` / `mode_multi_expedition` add a third:
   no entry, which would make R16 EASIER than R1. **[ASSUMED: no official source covers R16+; continuing the official
   curve is the maintainer's decision for this deviation. At the 99 cap it reaches ≈×724 HP solo, so 无尽 is a certain
   eventual defeat by construction.]**
-- **Not in scope.** The 隐秘核心 (`hiddenRound` is null for these modes, so `hiddenEligible` never fires) and the 机变
-  offer table (keyed by modeId and carrying no 三阶远征 entry, so R13+ take `choices.js scheduleFor`'s documented
-  fallback).
+- **The 隐秘核心 is the FINAL boss.** `expedition.hiddenFinal` makes `gamedata.hiddenRound` answer `bossRound + 1` for
+  whichever cap the room picked — R31 for the 30 cap, R100 for 无尽/无限 (whose caps end at R99) — so a run ends on the
+  hidden core, not on the last 最终攻势. `bossRounds.js _finishFinal` unlocks it only on that LAST boss round
+  (`this.round === this.gd.bossRound`); without the gate the R14 win would jump straight to the final boss and skip
+  R15–R29. The official mode has exactly one boss round, so the gate is that round and nothing changes there. Rounds 31
+  and 100 carry the official hidden pool (`hiddenBossWeights`) and its templates (`act1autochess_h08_*`).
+- **Not in scope.** The 机变 offer table (keyed by modeId and carrying no 三阶远征 entry, so R13+ take
+  `choices.js scheduleFor`'s documented fallback).
 
 Every official mode is untouched: `threeTier`, `bossRounds`, `poolCopies` and `expedition` are written only on the two
 new modes, the official entries of `data/config.json` are byte-identical, and the golden corpus does not move (287/287).

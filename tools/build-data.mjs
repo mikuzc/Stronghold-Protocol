@@ -3691,6 +3691,8 @@ const EXPEDITION_BOSS_ROUNDS = (() => {
   for (const r of EXPEDITION_CAP_ROUNDS) s.add(r);
   return [...s].sort((a, b) => a - b);
 })();
+// The 隐秘核心 (the FINAL boss): one round after each cap's own last round — R31 for the 30 cap, R100 for 无尽/无限.
+const EXPEDITION_HIDDEN_ROUNDS = EXPEDITION_CAP_ROUNDS.map((r) => r + 1);
 
 /**
  * Enemy stat multipliers {atk, hp, speed} of a 三阶远征 round past the official table. The official curve is
@@ -3845,19 +3847,25 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
     const hardTpls = [11, 12, 13].map((r) => src.rounds[String(r)]?.template).filter((t) => typeof t === 'string');
     const bossTemplates = src.rounds[String(src.bossRound)]?.bossTemplates || {};
     const bossTplId = Object.values(bossTemplates).find((v) => typeof v === 'string') || null;
+    // the 隐秘核心 is the FINAL boss of a 三阶远征 run: one round after whichever cap the room picked (R31 for the 30
+    // cap, R100 for 无尽/无限, whose caps end at R99). Its own boss pool and templates come from the official hidden round.
+    const hiddenTemplates = src.rounds[String(src.hiddenRound)]?.bossTemplates || {};
     const rounds = {}, enemyScale = {}, combatTimeLimit = {};
-    for (let r = 1; r <= EXPEDITION_MAX_ROUND; r++) {
+    for (let r = 1; r <= EXPEDITION_MAX_ROUND + 1; r++) {
       const official = src.rounds[String(r)];
-      const isBoss = EXPEDITION_BOSS_ROUNDS.includes(r);
+      const isHidden = EXPEDITION_HIDDEN_ROUNDS.includes(r);
+      const isBossRound = EXPEDITION_BOSS_ROUNDS.includes(r);
+      const isBoss = isBossRound || isHidden;
+      const tpls = isHidden ? hiddenTemplates : bossTemplates;
       const template = isBoss ? null : (official && !official.isBoss ? official.template : hardTpls[(r - 15) % hardTpls.length]);
-      const tplId = template || bossTplId;
+      const tplId = template || Object.values(tpls).find((v) => typeof v === 'string') || bossTplId;
       rounds[r] = {
-        template, bossTemplates: isBoss ? bossTemplates : null,
+        template, bossTemplates: isBoss ? tpls : null,
         combatTimeLimit: isBoss ? null : (waves[tplId]?.maxPlayTime ?? null),
         levelMaxPlayTime: waves[tplId]?.maxPlayTime ?? null,
         prepTime: multi ? (src.rounds[String(Math.min(r, 15))]?.prepTime ?? 90) : null,
         prepTimeData: src.rounds[String(Math.min(r, 15))]?.prepTimeData ?? null,
-        isSpPrepare: false, isBoss, isHidden: false,
+        isSpPrepare: false, isBoss, isHidden,
         bossOvertimeAfter: isBoss ? 150 : null,
       };
       enemyScale[r] = r <= 15 ? src.enemyScale[r] : expeditionEnemyScale(multipliers, src.type, 'NORMAL', r);
@@ -3888,12 +3896,15 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
       expedition: {
         caps: ['30', 'endless', 'sealed'], defaultCap: '30', sealAt: EXPEDITION_SEAL_AT,
         maxRound: EXPEDITION_MAX_ROUND, bossFirst: EXPEDITION_BOSS_FIRST, bossEvery: EXPEDITION_BOSS_EVERY,
+        // the 隐秘核心 is this mode's FINAL boss: gamedata.hiddenRound answers bossRound + 1 for whichever cap is picked
+        hiddenFinal: true,
       },
-      lastRound: cap0, bossRound: cap0, hiddenRound: null, bossRounds: [...EXPEDITION_BOSS_ROUNDS],
+      // hiddenRound here is the DEFAULT cap's (R31); gamedata.hiddenRound recomputes it from the room's cap
+      lastRound: cap0, bossRound: cap0, hiddenRound: cap0 + 1, bossRounds: [...EXPEDITION_BOSS_ROUNDS],
       rounds, enemyScale, combatTimeLimit, spRounds,
       poolCopies: { tiers: expeditionPoolCopies, overrides: expeditionStock },
       bossWeights: Object.fromEntries(Object.keys(bossTemplates).map((b) => [b, act.bossInfoDict[b].weight])),
-      hiddenBossWeights: {},
+      hiddenBossWeights: Object.fromEntries(Object.keys(hiddenTemplates).map((b) => [b, act.bossInfoDict[b].weight])),
     };
   }
 

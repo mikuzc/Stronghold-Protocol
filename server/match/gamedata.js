@@ -438,7 +438,18 @@ export class GameData {
   /** The LAST boss round — the one whose 最终攻势 ends the match. Every scalar consumer keeps its official meaning. */
   get bossRound() { const r = this.bossRounds; return r.length ? r[r.length - 1] : this.lastRound; }
 
-  get hiddenRound() { return Number.isInteger(this.mode.hiddenRound) && this.mode.hiddenRound > 0 ? this.mode.hiddenRound : null; }
+  /**
+   * The 隐秘核心 round. A 三阶远征 mode makes it the FINAL boss of the run (`expedition.hiddenFinal`): it follows
+   * whichever cap the room picked, so it is `bossRound + 1` — R31 for the 30 cap, R100 for 无尽/无限. Every official
+   * mode keeps the data field.
+   */
+  get hiddenRound() {
+    if (this.mode.expedition && this.mode.expedition.hiddenFinal === true) {
+      const b = this.bossRound;
+      return b > 0 ? b + 1 : null;
+    }
+    return Number.isInteger(this.mode.hiddenRound) && this.mode.hiddenRound > 0 ? this.mode.hiddenRound : null;
+  }
 
   /** True for a normal 最终攻势 round (the hidden round is never one of these). */
   isBossRound(r) { return this.bossRounds.includes(r); }

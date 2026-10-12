@@ -10,7 +10,10 @@
 //   gain_coin_when_round_start {count}                    精打细算玩偶           +count funds every round start
 //   use_equip_reward_char_chess_with_same_bond {count}    简易通讯机             `count` random chess sharing a bond
 //   use_equip_gain_coin_when_next_round_start {count}     见钱眼开玩偶           +count funds next round
-//   equip_destory_deployment_cnt_change {count}           人事部文档             deploy cap = count
+//   equip_destory_deployment_cnt_change {count}           人事部文档             deploy cap +1 per copy, NO ceiling
+//                                                                                (a deliberate deviation: the official
+//                                                                                card sets it to `count` = 9 and a
+//                                                                                second copy does nothing)
 //   use_equip_upgrade_char / equip_round_start_upgrade_char 博士投影             promote (golden: now, normal: next round)
 //   use_equip_reward_char_chess                           拟态物质               3rd copy (none when the pool is
 //                                                                                out), or with < 2 a same-bond chess
@@ -122,7 +125,10 @@ const ITEM_HANDLERS = {
     onEquip(ctx, ev) { ctx.addPendingFunds(int(paramsOf(ctx, ev.item).count, 2)); },
   },
   equip_destory_deployment_cnt_change: {
-    onEquip(ctx, ev) { ctx.setDeployCapAtLeast(int(paramsOf(ctx, ev.item).count, 9)); },
+    // 人事部文档 (a deliberate deviation, the maintainer's decision): +1 deploy slot per copy with NO ceiling, instead of
+    // the official "最大可部署人数变为9". `addDeployCap` is additive and unclamped (effectsMeta), so copies stack forever
+    // — `setDeployCapAtLeast` would floor it at `count` AND clamp the result at 12, which is what this replaced.
+    onEquip(ctx) { ctx.addDeployCap(1); },
   },
   use_equip_upgrade_char: {
     onEquip(ctx, ev) {

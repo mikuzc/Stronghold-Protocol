@@ -292,7 +292,10 @@ test('config: modes, rounds and templates', () => {
   for (const id of ['mode_single_expedition', 'mode_multi_expedition']) {
     const e = M[id];
     assert.equal(e.threeTier, true, id);
-    assert.equal(e.hiddenRound, null, id);
+    assert.equal(e.hiddenRound, 31, `${id}: the default cap's 隐秘核心 (the FINAL boss)`);
+    assert.equal(e.expedition.hiddenFinal, true, id);
+    assert.ok(e.rounds['31']?.isHidden && e.rounds['100']?.isHidden, `${id}: a hidden round per cap`);
+    for (const b of Object.keys(e.hiddenBossWeights)) assert.ok(e.rounds['31'].bossTemplates[b], `${id}: hidden boss ${b}`);
     assert.deepEqual(e.expedition.caps, ['30', 'endless', 'sealed'], id);
     assert.equal(e.expedition.defaultCap, '30', id);
     assert.equal(e.lastRound, 30, `${id}: the default cap`);

@@ -37,7 +37,9 @@ const ladders = (ps, base, elite, ace) => ({
 test('三阶远征: the mode carries the flag and the official modes do not', () => {
   const exp = new GameData(DATA, 'mode_single_expedition');
   assert.equal(exp.threeTier, true);
-  assert.equal(exp.mode.hiddenRound, null, 'the hidden core is not part of the expedition');
+  assert.equal(exp.mode.hiddenRound, 31, 'the hidden core is the default cap\'s final boss');
+  assert.equal(exp.hiddenRound, 31, '... and gamedata recomputes it from the cap');
+  assert.equal(exp.mode.expedition.hiddenFinal, true);
   const off = new GameData(DATA, 'mode_single_normal');
   assert.equal(off.threeTier, false);
   assert.equal(off.mode.threeTier, undefined);
@@ -65,6 +67,13 @@ test('三阶远征: the three caps set the last round, every one is a 最终攻�
       assert.equal(gd.isBossFight(r), true, `R${r} is a boss fight`);
       assert.equal(gd.isFinalFightRound(r), r === entry.rounds, `R${r} ends the match only at the cap`);
     }
+    assert.equal(gd.isFinalFightRound(entry.rounds), true, 'the cap round ends the run');
+    // the 隐秘核心 is the FINAL boss, one round after the cap, and it ends the run too
+    assert.equal(gd.hiddenRound, entry.rounds + 1, `${entry.id}: the 隐秘核心 follows the cap`);
+    assert.equal(gd.isBossFight(gd.hiddenRound), true, `${entry.id}: the 隐秘核心 is a boss fight`);
+    assert.equal(gd.isFinalFightRound(gd.hiddenRound), true, `${entry.id}: the 隐秘核心 finishes the match`);
+    assert.equal(gd.roundCfg(gd.hiddenRound).isHidden, true, `${entry.id}: a hidden template`);
+    assert.equal(gd.isFinalFightRound(entry.rounds + 2), false, `${entry.id}: nothing follows it`);
     // a normal round is neither
     assert.equal(gd.isBossFight(16), false);
     assert.equal(gd.isFinalFightRound(16), false);

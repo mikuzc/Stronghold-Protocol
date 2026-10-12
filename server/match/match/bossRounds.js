@@ -544,7 +544,11 @@ export class MatchBoss {
     this.runner = null;
     const endsMatch = this.gd.isFinalFightRound(this.round);
     if (!hidden) {
-      const eligible = victory && !!this.hiddenBossId && hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp });
+      // only the LAST 最终攻势 unlocks the 隐秘核心: a 三阶远征 run holds several boss rounds (R14 and then every 7), and
+      // without this gate the first win would jump straight to the final boss and skip everything between. The official
+      // mode has exactly one boss round, so this is that round and nothing changes there.
+      const eligible = victory && this.round === this.gd.bossRound && !!this.hiddenBossId
+        && hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp });
       this.later(this.scaled(DELAYS.SETTLE), () => {
         if (eligible) {
           this.hiddenReached = true;
