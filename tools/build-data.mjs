@@ -3674,6 +3674,47 @@ const DEFAULT_ENEMY_MULTIPLIERS = {
   abyssMoveSpeedMulFromRound3: 1.15,
 };
 
+// ---- 三阶远征 (a deliberate deviation) -------------------------------------------------------------------------
+// The selectable round caps, the largest round the schedule carries, and the boss cadence "R14 and then every 7".
+// The union of the cadence and the caps keeps every selectable final round a 最终攻势: R28 → R30 is the one short gap,
+// because 30 is not on the 14 + 7k grid. See docs/design/match.md.
+const EXPEDITION_CAPS = [30, 60, 99];
+const EXPEDITION_MAX_ROUND = 99;
+const EXPEDITION_BOSS_FIRST = 14;
+const EXPEDITION_BOSS_EVERY = 7;
+const EXPEDITION_BOSS_ROUNDS = (() => {
+  const s = new Set();
+  for (let r = EXPEDITION_BOSS_FIRST; r <= EXPEDITION_MAX_ROUND; r += EXPEDITION_BOSS_EVERY) s.add(r);
+  for (const c of EXPEDITION_CAPS) s.add(c);
+  return [...s].sort((a, b) => a - b);
+})();
+
+/**
+ * Enemy stat multipliers {atk, hp, speed} of a 三阶远征 round past the official table. The official curve is
+ * `atk = atkBase·1.1^kAtk`, `hp = hpBase·1.2^kHp·extra` and its `k` arrays stop at R14; past that `k` keeps advancing
+ * at the mean step the official array itself takes, so R16+ follows the official shape. [ASSUMED: no official source
+ * covers R16+; continuing the official curve is the maintainer's decision for this deviation. Without it
+ * `gamedata.baseEnemyScale` would fall back to 1/1 and R16 would be EASIER than R1.]
+ */
+function expeditionEnemyScale(table, type, difficulty, round) {
+  const t = table?.[type === 'SINGLE' ? 'single' : 'multi']?.[difficulty];
+  if (!t) return { atk: 1, hp: 1, speed: 1, assumed: true };
+  const cont = (arr) => {
+    const n = arr?.length || 0;
+    if (!n) return 0;
+    const first = Number(arr[0]) || 0, last = Number(arr[n - 1]) || 0;
+    return last + ((last - first) / Math.max(1, n - 1)) * (round - n);
+  };
+  const kAtk = cont(t.kAtk || t.k), kHp = cont(t.kHp || t.k);
+  const extra = t.hpExtra ? Number(t.hpExtra[t.hpExtra.length - 1]) || 1 : 1;
+  const speedMul = difficulty === 'ABYSS' && round >= 3 ? (table.abyssMoveSpeedMulFromRound3 ?? 1.15) : 1;
+  const supplyHp = cleanNum(1.2 ** Math.max(0, kHp - kAtk) * extra);
+  return {
+    atk: cleanNum(t.atkBase * 1.1 ** kAtk), hp: cleanNum(t.hpBase * 1.2 ** kHp * extra), speed: speedMul,
+    kAtk: cleanNum(kAtk), kHp: cleanNum(kHp), ...(supplyHp !== 1 ? { supplyHp } : {}),
+  };
+}
+
 /**
  * Enemy stat multipliers {atk, hp, speed} of one round (research 01 A3; leader HP pools excluded). `supplyHp` (only
  * when ≠ 1) = the share of `hp` that comes from 补给线 / 补给线II: the HP-only steps — 1.2^(kHp − kAtk), 补给线II "最大生命值
@@ -3719,6 +3760,13 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
   if (!addendum.enemyStatMultipliers) warn('config: using built-in enemy multiplier table (research 01 _criticAddendum missing)');
   const incomeCap = addendum.incomePerRound?.CAP ?? 12;
   const DIFF_KEYS = { FUNNY: 'bloodPoint', NORMAL: 'bloodPointNormal', HARD: 'bloodPointHard', ABYSS: 'bloodPointAbyss' };
+
+  // Shared-pool copies per tier (the official table). The 三阶远征 mode overrides it per mode (mode.poolCopies
+  // below): its second merge rung needs 3 × 3 = 9 copies of one base, which the official 5阶 8 / 6阶 5 cannot supply.
+  const poolCopies = { 1: 12, 2: 14, 3: 18, 4: 16, 5: 8, 6: 5 };
+  // Every tier and every per-operator override lifted above the 9 a full ladder needs, rounded to whole elites.
+  const expeditionPoolCopies = Object.fromEntries(Object.entries(poolCopies).map(([t, v]) => [t, Math.max(12, Math.ceil((v * 1.5) / 3) * 3)]));
+  const expeditionStock = Object.fromEntries(Object.entries(chessStock).map(([id, v]) => [id, Math.max(12, Math.ceil((v * 1.5) / 3) * 3)]));
 
   const modes = {};
   for (const modeId of Object.keys(act.modeDataDict)) {
@@ -3780,6 +3828,68 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
     };
   }
 
+  // ===== 三阶远征 (a deliberate deviation) ======================================================================
+  // Generated from the official mode of the same room shape. It is the ONLY mode where the third chess form (王牌 `_c`,
+  // injectAceForms) is reachable: a second merge rung turns 3 精锐 into the 王牌, so its pool has to carry enough copies
+  // of every base for the whole ladder (3 × 3 = 9). Its rounds run to EXPEDITION_MAX_ROUND with a 最终攻势 on
+  // EXPEDITION_BOSS_ROUNDS, R15+ reusing the R11–R13 high-difficulty templates and the official enemy curve continued
+  // (expeditionEnemyScale). The room picks the cap at match start (mode.expedition.caps → gamedata.expeditionCap).
+  for (const [expId, srcId] of [['mode_single_expedition', 'mode_single_normal'], ['mode_multi_expedition', 'mode_multi_normal']]) {
+    const src = modes[srcId];
+    if (!src) continue;
+    const multi = src.type === 'MULTI';
+    // R11 → h04, R12 → h05, R13 → h06: the three hardest normal templates, cycled upwards from R15 on (R14 is a boss)
+    const hardTpls = [11, 12, 13].map((r) => src.rounds[String(r)]?.template).filter((t) => typeof t === 'string');
+    const bossTemplates = src.rounds[String(src.bossRound)]?.bossTemplates || {};
+    const bossTplId = Object.values(bossTemplates).find((v) => typeof v === 'string') || null;
+    const rounds = {}, enemyScale = {}, combatTimeLimit = {};
+    for (let r = 1; r <= EXPEDITION_MAX_ROUND; r++) {
+      const official = src.rounds[String(r)];
+      const isBoss = EXPEDITION_BOSS_ROUNDS.includes(r);
+      const template = isBoss ? null : (official && !official.isBoss ? official.template : hardTpls[(r - 15) % hardTpls.length]);
+      const tplId = template || bossTplId;
+      rounds[r] = {
+        template, bossTemplates: isBoss ? bossTemplates : null,
+        combatTimeLimit: isBoss ? null : (waves[tplId]?.maxPlayTime ?? null),
+        levelMaxPlayTime: waves[tplId]?.maxPlayTime ?? null,
+        prepTime: multi ? (src.rounds[String(Math.min(r, 15))]?.prepTime ?? 90) : null,
+        prepTimeData: src.rounds[String(Math.min(r, 15))]?.prepTimeData ?? null,
+        isSpPrepare: false, isBoss, isHidden: false,
+        bossOvertimeAfter: isBoss ? 150 : null,
+      };
+      enemyScale[r] = r <= 15 ? src.enemyScale[r] : expeditionEnemyScale(multipliers, src.type, 'NORMAL', r);
+      combatTimeLimit[r] = rounds[r].combatTimeLimit;
+    }
+    const cap0 = EXPEDITION_CAPS[0];
+    // 机变 drafts: the official cadence through R15, then one in the round before every 最终攻势. The 机变 offer table
+    // is keyed by modeId and has no 三阶远征 entry, so those rounds take server/match/choices.js scheduleFor's
+    // documented fallback (a supply draft) — [ASSUMED: extending the cadence is the maintainer's decision].
+    const spRounds = [...(Array.isArray(src.spRounds) ? src.spRounds.filter((r) => r <= 15) : [])];
+    for (let r = EXPEDITION_BOSS_FIRST - 1; r <= EXPEDITION_MAX_ROUND; r += EXPEDITION_BOSS_EVERY) if (!spRounds.includes(r)) spRounds.push(r);
+    spRounds.sort((a, b) => a - b);
+    modes[expId] = {
+      ...src,
+      modeId: expId, name: '三阶远征', code: 'EXPEDITION', sortId: 90,
+      difficulty: 'NORMAL', inScope: true, color: '#7c4dff',
+      desc: '干员可再进一步：3 名精锐合成王牌。牌库全阶扩充，回合数与敌方强度随远征推进。',
+      effectDescList: [
+        '·3 名相同精锐干员合成【王牌】（精英三阶）',
+        '·牌库全阶扩充，每个干员都有足够张数走完三阶',
+        `·回合上限可选：${EXPEDITION_CAPS.join(' / ')} 回合（开局选择）`,
+        `·第 ${EXPEDITION_BOSS_FIRST} 回合起每 ${EXPEDITION_BOSS_EVERY} 回合一次最终攻势，最后一回合必为最终攻势`,
+        '·第 16 回合起沿用高难波次，敌方强度按官方曲线继续外推',
+      ],
+      unlockText: null,
+      threeTier: true,
+      expedition: { caps: [...EXPEDITION_CAPS], maxRound: EXPEDITION_MAX_ROUND, bossFirst: EXPEDITION_BOSS_FIRST, bossEvery: EXPEDITION_BOSS_EVERY },
+      lastRound: cap0, bossRound: cap0, hiddenRound: null, bossRounds: [...EXPEDITION_BOSS_ROUNDS],
+      rounds, enemyScale, combatTimeLimit, spRounds,
+      poolCopies: { tiers: expeditionPoolCopies, overrides: expeditionStock },
+      bossWeights: Object.fromEntries(Object.keys(bossTemplates).map((b) => [b, act.bossInfoDict[b].weight])),
+      hiddenBossWeights: {},
+    };
+  }
+
   const priceTable = act.shopCharChessInfoData || {};
   const chessPrice = {}, chessSell = {}, chessStatus = {};
   for (const [tier, rows] of Object.entries(priceTable)) {
@@ -3818,7 +3928,7 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
       benchSize: act.constData.maxDeckChessCnt, tempSize: 5, deployCap: act.constData.maxBattleChessCnt,
       storeCntMax: act.constData.storeCntMax,
       equipPerChess: 2, maxArtsPerRound: 2,
-      poolCopies: { 1: 12, 2: 14, 3: 18, 4: 16, 5: 8, 6: 5 },
+      poolCopies,
       poolCopiesOverrides: chessStock,
       coopPoolMultiplier: 2,
       itemPoolCopies: { 1: 4, 2: 6, 3: 7, 4: 8, 5: 7, 6: 3 },

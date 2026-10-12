@@ -106,7 +106,7 @@ export function collectViolations(m, { limit = 25 } = {}) {
           else if (gd.item(it.id).itemType !== 'EQUIP') fail(`${id}: ${p.id} carries a non-equipment item ${it.id}`);
           countItem(it);
         }
-        const maxCopies = rec.isGolden ? gd.goldenCopies : 1;
+        const maxCopies = gd.maxPoolCopies(p.id);
         if (!Number.isInteger(p.poolCopies) || p.poolCopies < 0 || p.poolCopies > maxCopies) fail(`${id}: ${p.id} holds ${p.poolCopies} copies`);
         const base = gd.baseIdOf(p.id);
         const tally = rec.isDiy ? diyHeld : held;
@@ -144,12 +144,25 @@ export function collectViolations(m, { limit = 25 } = {}) {
       if (p.kind === 'chess') deployed++;
     }
     if (deployed > ps.deployCap) fail(`${id}: ${deployed} chess deployed > cap ${ps.deployCap}`);
-    // merges are immediate
+    // merges are immediate — the normal rung (3 普通 → 精锐) …
     const copies = new Map();
     for (const p of all) if (p.kind === 'chess' && pgd.chess(p.id) && !gd.isGolden(p.id)) { const b = gd.baseIdOf(p.id); copies.set(b, (copies.get(b) || 0) + 1); }
     for (const [b, n] of copies) {
       const need = gd.mergeCount(b);
       if (need > 1 && gd.goldenIdOf(b) && n >= need) fail(`${id}: owns ${n} normal copies of ${b} (merges at ${need})`);
+    }
+    // … and, in a `threeTier` mode, the elite rung (3 精锐 → 王牌): three elites of one base must have merged at once
+    if (gd.threeTier) {
+      const elites = new Map();
+      for (const p of all) {
+        if (p.kind !== 'chess' || !gd.chess(p.id)?.isGolden) continue;
+        const b = gd.baseIdOf(p.id);
+        elites.set(b, (elites.get(b) || 0) + 1);
+      }
+      for (const [b, n] of elites) {
+        const need = gd.mergeCount(gd.goldenIdOf(b));
+        if (need > 1 && n >= need) fail(`${id}: owns ${n} 精锐 copies of ${b} (merges at ${need})`);
+      }
     }
     for (const [itemId, n] of itemCounts) {
       const rec = gd.item(itemId);

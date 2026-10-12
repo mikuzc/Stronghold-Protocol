@@ -99,7 +99,7 @@
 //     a player seat (the seat is kept and given back on resume).
 
 import { randomBytes, randomInt } from 'node:crypto';
-import { ERR, MAX_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN, modeIdFor } from '../shared/constants.js';
+import { ERR, MAX_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN, modeIdFor, EXPEDITION_DEFAULT_CAP, isExpeditionCap } from '../shared/constants.js';
 import { checkLoadout, checkLoadoutOps, cultivationCharIds, checkNotOwned, checkDiyPicks } from '../shared/protocol.js';
 import { encode, isDroppable, isErrCode, sendRaw, sendSession } from './net.js';
 import { getData as defaultGetData, lookup } from './data.js';
@@ -179,6 +179,12 @@ export class Room {
      * put every human seat before every AI seat (Match opts.aiPicksLast). Kept across the room's matches.
      */
     this.aiPicksLast = false;
+    /**
+     * 三阶远征 round cap (room.setExpeditionCap — this project's deviation, docs/design/match.md): the last round the
+     * match plays, one of EXPEDITION_CAPS and always a 最终攻势 round. Only a 三阶远征 mode reads it (Match
+     * opts.expeditionCap → GameData.expeditionCap); every official mode ignores it. Kept across the room's matches.
+     */
+    this.expeditionCap = EXPEDITION_DEFAULT_CAP;
     /** @type {string | null} */
     this.hostId = null;
     /** @type {(Seat | null)[]} */
@@ -229,6 +235,7 @@ export class Room {
       mode: this.mode,
       difficulty: this.difficulty,
       aiPicksLast: this.aiPicksLast,
+      expeditionCap: this.expeditionCap,
       inMatch: !!this.match,
       seats: this.seats.map((s) => (s
         ? { seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot, ready: s.ready, connected: s.connected && !s.left }
@@ -339,6 +346,7 @@ export class Lobby {
       case 'room.ready': return this.ready(session, msg);
       case 'room.setDifficulty': return this.setDifficulty(session, msg);
       case 'room.setAiPicksLast': return this.setAiPicksLast(session, msg);
+      case 'room.setExpeditionCap': return this.setExpeditionCap(session, msg);
       case 'room.addBot': return this.addBot(session);
       case 'room.removeBot': return this.removeBot(session, msg);
       case 'room.kick': return this.kick(session, msg);
@@ -545,6 +553,25 @@ export class Lobby {
     return OK;
   }
 
+  /**
+   * 三阶远征 round cap (this project's deviation): host-only, before the match. Only a 三阶远征 mode reads it, so an
+   * official room can change it freely without affecting its match.
+   */
+  setExpeditionCap(session, { cap }) {
+    const room = this.roomOf(session);
+    if (!room) return fail(ERR.NOT_IN_ROOM);
+    if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
+    if (room.match) return fail(ERR.ROOM_STARTED);
+    if (!isExpeditionCap(cap)) return fail(ERR.BAD_TARGET, 'invalid expedition round cap');
+    this.dropReplay(room, session.playerId);
+    if (room.expeditionCap !== cap) {
+      room.expeditionCap = cap;
+      for (const s of room.seats) if (s && !s.isBot && s.playerId !== room.hostId) s.ready = false;
+      this.broadcastState(room);
+    }
+    return OK;
+  }
+
   addBot(session) {
     const room = this.roomOf(session);
     if (!room) return fail(ERR.NOT_IN_ROOM);
@@ -738,6 +765,8 @@ export class Lobby {
         modeId: modeIdFor(room.mode, room.difficulty),
         // 「AI 队友最后选择」 (GitHub #338): fixed for the match
         aiPicksLast: room.mode !== 'solo' && room.aiPicksLast === true,
+        // 三阶远征 round cap (the deviation): only a 三阶远征 mode reads it
+        expeditionCap: room.expeditionCap,
         seats,
         // the spectator seats (header): watched like eliminated players, never players
         spectators: room.spectators.map((s) => s.playerId),

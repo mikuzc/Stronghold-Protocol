@@ -10,23 +10,36 @@ import { MAX_OFFER_SLOTS } from './common.js';
 import { onMerge } from '../botEmotes.js';
 
 export class PlayerAcquire {
-  /** Normal copies of a base chess currently owned (board/hand/temp). */
-  countCopies(baseId) {
+  /**
+   * Copies of the exact chess form `formId` currently owned (board/hand/temp). Called with a normal `_a` id this is
+   * the official copy count; with an elite `_b` id it is the 精锐 count the second rung (三阶远征) merges on.
+   */
+  countCopies(formId) {
     let n = 0;
-    for (const loc of this._chessLocations()) {
-      const p = loc.piece;
-      if (!this.gd.isGolden(p.id) && this.gd.baseIdOf(p.id) === baseId) n++;
-    }
+    for (const loc of this._chessLocations()) if (loc.piece.id === formId) n++;
     return n;
   }
 
-  /** Would acquiring one more normal copy of `chessId` complete a merge? */
+  /**
+   * Would acquiring one more copy of `chessId`'s OWN form complete its merge? The 普通 `_a` rung always (3 → 精锐); the
+   * 精锐 `_b` rung only in a `threeTier` mode, where the third elite becomes the 王牌 `_c`. An elite outside such a
+   * mode, and every ace, never merges — `mergeCount` / `mergeTargetOf` answer 0 / null for them.
+   */
   completesChessMerge(chessId) {
-    const rec = this.gd.chess(chessId);
-    if (!rec || rec.isGolden) return false;
     const need = this.gd.mergeCount(chessId);
-    if (!(need > 1) || !this.gd.goldenIdOf(chessId)) return false;
-    return this.countCopies(this.gd.baseIdOf(chessId)) + 1 >= need;
+    if (!(need > 1) || !this.gd.mergeTargetOf(chessId)) return false;
+    return this.countCopies(chessId) + 1 >= need;
+  }
+
+  /**
+   * Is the merge of `chessId`'s rung already complete with the copies owned right now? Unlike completesChessMerge this
+   * does NOT add the copy being gained: a cascade (三阶远征: 3 普通 → 精锐, then 3 精锐 → 王牌) passes a piece the
+   * previous rung has already stowed, so it is counted by countCopies.
+   */
+  mergesNow(chessId) {
+    const need = this.gd.mergeCount(chessId);
+    if (!(need > 1) || !this.gd.mergeTargetOf(chessId)) return false;
+    return this.countCopies(chessId) >= need;
   }
 
   /**
@@ -47,10 +60,15 @@ export class PlayerAcquire {
     const piece = this.newPiece('chess', chessId, { poolCopies: taken });
     this.round.gainedChess++;
     let owned = piece;
-    if (!rec.isGolden && this.completesChessMerge(chessId)) {
-      owned = this._mergeChess(base, piece);
-      if (!owned) return null;
-    } else {
+    // A merge may complete the NEXT rung at once: in a `threeTier` mode (三阶远征) the third 精锐 of a base becomes its
+    // 王牌 in the same gain. The official mode has one rung, so this loop runs at most once there.
+    for (let rung = 0; rung < 3; rung++) {
+      if (!(rung === 0 ? this.completesChessMerge(owned.id) : this.mergesNow(owned.id))) break;
+      const merged = this._mergeChess(this.gd.baseIdOf(owned.id), owned);
+      if (!merged) return null;
+      owned = merged;
+    }
+    if (owned === piece) {
       const where = this.stow(piece, { allowTemp: true, toTemp });
       if (!where) {
         this.returnCopies(piece);
@@ -82,13 +100,21 @@ export class PlayerAcquire {
    * @param {any} incoming the acquired, not yet stowed copy (null: only owned copies)
    */
   _mergeChess(baseId, incoming) {
-    const need = this.gd.mergeCount(baseId);
-    const goldenId = this.gd.goldenIdOf(baseId);
+    // The rung this merge belongs to is the incoming copy's OWN form, not the pool key: `baseId` is always the normal
+    // `_a` (acquireChess passes baseIdOf, and both the pool and poolOf are keyed by it), while an elite copy merges
+    // from `_b` into the 王牌 `_c`. Outside a `threeTier` mode mergeTargetOf(`_b`) is null, so the official mode keeps
+    // exactly the one rung below and an elite stays terminal.
+    const fromId = incoming && this.gd.mergeTargetOf(incoming.id) ? incoming.id : baseId;
+    const need = this.gd.mergeCount(fromId);
+    const goldenId = this.gd.mergeTargetOf(fromId);
     if (!(need > 1) || !goldenId) return null;
-    const locs = this._chessLocations().filter((l) => !this.gd.isGolden(l.piece.id) && this.gd.baseIdOf(l.piece.id) === baseId);
+    const locs = this._chessLocations().filter((l) => l.piece.id === fromId);
     const consumed = [];
-    if (incoming) consumed.push({ piece: incoming, area: 'new' });
-    for (const l of locs) { if (consumed.length >= need) break; consumed.push(l); }
+    // The incoming copy is usually not stowed yet (a buy / grant: area 'new'). A cascade passes the piece the previous
+    // rung just stowed, which IS in `locs` — take its real location, so it is detached and never counted twice.
+    const incomingLoc = incoming ? (locs.find((l) => l.piece === incoming) || { piece: incoming, area: 'new' }) : null;
+    if (incomingLoc) consumed.push(incomingLoc);
+    for (const l of locs) { if (consumed.length >= need) break; if (l === incomingLoc) continue; consumed.push(l); }
     if (consumed.length < need) return null;
     let copies = 0;
     const items = [];

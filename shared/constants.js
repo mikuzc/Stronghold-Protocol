@@ -21,9 +21,14 @@ export const MAX_SPECTATORS = 2;
 export const ROOM_CODE_LEN = 4;
 export const NAME_MAX_LEN = 12;
 
-export const DIFFICULTIES = ['FUNNY', 'NORMAL', 'HARD', 'ABYSS'];
-export const DIFFICULTY_NAMES = { FUNNY: N_('标准模拟'), NORMAL: N_('险境模拟'), HARD: N_('绝境模拟'), ABYSS: N_('终极模拟') };
-export const DIFFICULTY_COLORS = { FUNNY: '#f6a329', NORMAL: '#e85a1a', HARD: '#e73118', ABYSS: '#ff0024' };
+export const DIFFICULTIES = ['FUNNY', 'NORMAL', 'HARD', 'ABYSS', 'EXPEDITION'];
+export const DIFFICULTY_NAMES = { FUNNY: N_('标准模拟'), NORMAL: N_('险境模拟'), HARD: N_('绝境模拟'), ABYSS: N_('终极模拟'), EXPEDITION: N_('三阶远征') };
+export const DIFFICULTY_COLORS = { FUNNY: '#f6a329', NORMAL: '#e85a1a', HARD: '#e73118', ABYSS: '#ff0024', EXPEDITION: '#7c4dff' };
+// 三阶远征 only (a deliberate deviation, docs/design/match.md): the round caps the room picks at match start. The
+// value is the last round played, and every one of them is a 最终攻势 round (server/match/gamedata.js bossRounds).
+export const EXPEDITION_CAPS = [30, 60, 99];
+export const EXPEDITION_DEFAULT_CAP = EXPEDITION_CAPS[0];
+export const isExpeditionCap = (v) => EXPEDITION_CAPS.includes(v);
 
 // modeId in data/config.json = `mode_${type}_${difficulty.toLowerCase()}` with type single|multi
 export const modeIdFor = (roomMode, difficulty) =>

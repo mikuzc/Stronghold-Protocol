@@ -94,6 +94,45 @@ and before Ready. The prep's deadline — and the scheduler's fallback when a st
 
 Deterministic-ish heuristic player used for (a) AI teammates, (b) auto-play for disconnected humans (only auto-ready + auto-picks, not shopping, unless "AI 托管" is toggled), (c) tests. Strategy (§21.6): pick a band (weighted by starting LP; never one built around a bond the mode switches off — `gd.bandBondIds`, §21.26); each prep: take offers, sell dead bench weight, fill the board, complete affordable merges, level on the curve, then buy only merge progress / lineup upgrades worth more than the refreshes their price would buy (shop odds of completing held pairs), freeze for an unaffordable third copy (坎诺特 keeps 5 funds back); build around a committed focus core bond (a teammate's main bond on its strip counts against it; bonds the mode switches off never) + a second bond; value dealers by DPS vs the round's DEF / RES (an attack on every enemy in range counts double — 阵法术师 / 轰击术师), with the range the unit is deployed with; place by the exposure model + rehearsal on the server's deploy map (no 深水区; a blocker whose range is its own tile only — range 0-1 — takes a free tile of the enemy road first; a tactician's 援军 within `PlayerState.summonRange`; a melee chess whose trait reads 「可以放置于远程位」 (钩索师 / 推击手) on a 高台 whose range covers the enemy road, else on the ground, counted as a blocker in the lineup either way — §3; `g.move` judges legality); items by effect (META §1.5: 突变细胞 on the least valuable normal single below 6阶, a cell left in temp gets a hand slot made for it, the operator its transformation gains is deployed by the next prep's lineup step like any owned unit — AI 托管 too; the buy loop's bench shed never sells a piece gained since the bot's last prep, §21.1); 机变 bounties by expected payout − expected LP loss over the offered cards; resolve temp — on a human seat under AI 托管 never by destroying an item while a bench operator can be sold for the slot —; ready. A bot's whole prep — shop decisions and layout planning (`botPrepBeginSteps`, 25–70 ms late in a 4-bot match), the layout rehearsal and `botPrepEndSteps` — runs in wall-clock slices of `botSliceMs` (8 ms) per scheduler callback on a real host (step generators that yield between whole actions, never with a transient board; the same actions in the same order, so decisions are unchanged; at once in virtual time). Under AI 托管 a human's own 自选 pieces score `DIY_PIECE_BONUS` (12) more in the shop / reward choice and the 调度中心 is levelled one round earlier for the step that opens a slotted tier (`levelUp`, `diyOpensAt`; 0.2.0 — bots field no 自选 piece).
 
+### 6.7 三阶远征 — the third chess form (a deliberate deviation, the maintainer's decision)
+
+The official mode has exactly two forms per chess — 普通 `_a` and 精锐 `_b` — and the elite is terminal. The two
+generated modes `mode_single_expedition` / `mode_multi_expedition` add a third:
+
+- **The ladder.** `gamedata.threeTier` (the mode's `threeTier`) switches on a second merge rung — 3 精锐 `_b` → 王牌 `_c`
+  — on top of the official 3 普通 → 精锐. `gamedata.aceIdOf` / `mergeTargetOf` / `mergeCount` answer for the elite rung
+  only while it is on, so every official mode keeps the elite terminal (`mergeTargetOf('_b')` is null, `mergeCount('_b')`
+  is 0 for it) and no official answer moves. `PlayerState._mergeChess` derives its rung from the incoming copy's own
+  form (its second argument), `acquireChess` cascades — the third 精锐 becomes the 王牌 in the same gain — and
+  `invariants.js` fails any state holding three elites at once. `maxPoolCopies` gives an ace the whole ladder's copies.
+- **The 王牌 data.** `tools/build-data.mjs injectAceForms` synthesises `_c` from the official tables: the LOWER of the
+  operator's and its 补位 stand-in's ceilings on both axes — E2 max level (4★ 70 / 5★ 80 / 6★ 90) and skill level
+  (10 = 专精三, or the 7 the `skcom_*` 预备干员 skills carry) — with `equipLevel` 3 when either body has a module. The
+  record is `visible: false` and `isGolden`, so it never enters the shop, the roster, cultivation or the golden corpus;
+  `_b.aceChessId` is the link, written only where an ace exists (129 of 133 families — the four 自选 slots have none).
+- **The pool.** One ladder consumes `mergeCount(_b) × mergeCount(_a)` = 9 copies of a base, which the official per-tier
+  table (5阶 8 / 6阶 5) cannot supply. The mode carries `poolCopies { tiers, overrides }`, which `gamedata.poolCopies`
+  consults before the global tables — per key, so the official values stay byte-for-byte and an operator the mode does
+  not list keeps its own.
+- **The rounds.** `expedition.caps` = 30 / 60 / 99; the room picks one (`room.setExpeditionCap` → Match
+  `opts.expeditionCap` → `gamedata.expeditionCap`) and it sets `lastRound`. `bossRounds` holds R14 and then every 7
+  rounds, plus every cap value (R28 → R30 is the one short gap: 30 is not on the 14 + 7k grid), and only the LAST one
+  finishes the match — `gamedata.isFinalFightRound`, so `bossRounds.js _finishFinal` resumes the loop after an
+  intermediate 最终攻势 (`_resumeAfterBoss`) instead of ending it. `bossRound` keeps its scalar meaning for
+  `results.js` / `audit.js` / the client: it is the final boss round.
+- **The waves.** R1–R13 are the official round data; R15+ cycle the three hardest normal templates (R11 `h04`, R12
+  `h05`, R13 `h06`). `enemyScale` continues the official curve — `atk = atkBase·1.1^k`, `hp = hpBase·1.2^k·extra`, `k`
+  advancing at the mean step of the official `k` array — because `gamedata.baseEnemyScale` answers 1/1 for a round with
+  no entry, which would make R16 EASIER than R1. **[ASSUMED: no official source covers R16+; continuing the official
+  curve is the maintainer's decision for this deviation. At the 99 cap it reaches ≈×724 HP solo, so 无尽 is a certain
+  eventual defeat by construction.]**
+- **Not in scope.** The 隐秘核心 (`hiddenRound` is null for these modes, so `hiddenEligible` never fires) and the 机变
+  offer table (keyed by modeId and carrying no 三阶远征 entry, so R13+ take `choices.js scheduleFor`'s documented
+  fallback).
+
+Every official mode is untouched: `threeTier`, `bossRounds`, `poolCopies` and `expedition` are written only on the two
+new modes, the official entries of `data/config.json` are byte-identical, and the golden corpus does not move (287/287).
+
 ---
 
 ## 16. Operator loadout: skill & module selection (v2.1, user playtest #1)

@@ -31,7 +31,9 @@ Unknown options or a missing option value are errors (exit code 2); `--refresh` 
   Integrity errors (see §17) make the exit code 1 **and leave the previous output untouched** (unless `--force`);
   warnings never do. Each output file is written atomically (temp file + rename).
 - **Determinism.** Same inputs ⇒ byte-identical outputs (stable key order, no timestamps, no randomness).
-- **Size.** ≈3.7 MB total (limit 6 MB; `chess.json` ≈1.69 MB with the loadout choices, `backups.json` ≈0.17 MB), compact JSON (no indentation).
+- **Size.** ≈6.9 MB across the generated files (limit 8 MB — `MAX_DATA_BYTES` in `tools/build-data.mjs`; `chess.json`
+  ≈2.97 MB with the 395 records and the loadout choices, `backups.json` ≈2.02 MB), compact JSON (no indentation).
+  `data/assets.json` is an install-time manifest, not generated here, and is not part of that budget.
 - **Derived paths.** `stages.json groundPaths*` come from the sim's own `server/sim/grid.js` pathing: a change there
   needs a rebuild (the offline-rebuild test catches a stale `data/`).
 
@@ -75,6 +77,10 @@ Top level: `{ season, seasonName, modes, economy, lpCapPerRound, bossOvertimeAft
 | `combatTimeLimit[r]` | `{"1":45,…,"14":null}` | = `rounds[r].combatTimeLimit`: **real** seconds of the forced-2× battle (DESIGN §4) |
 | `enemyScale[r]` | `{"atk":1.1,"hp":1.2,"speed":1,"kAtk":1,"kHp":1}` | non-boss enemy multipliers (research 01 A3): `atk = atkBase·1.1^kAtk`, `hp = hpBase·1.2^kHp·extra`, `speed` 1.15 on ABYSS from R3; `supplyHp` (only when ≠ 1, co-op 终极 R5–R15) = the share of `hp` from 补给线 / 补给线II (1.2^(kHp − kAtk) · extra), which the 14 器物 hit-count keys do not take (their `enemy_exclude`). Apply to level-0 stats after special-enemy replacement, also to bounty/special enemies and to the leaders' mid-fight summons. **Leader HP pools excluded.** |
 | `bossHpScale` | `{"bloodPointKey":"bloodPointAbyss","unaffectedByEnemyScale":true}` | which `bloodPoint` column the mode reads; the pool rule's keys live in the global `bossHpScale` below — one set here would override it for this mode (`gamedata.js bossPoolShareOf`) |
+| `bossRounds` | 三阶远征 only: `[14,21,28,30,…]` | every 最终攻势 round of the match. Absent in every official mode, where `gamedata.bossRounds` falls back to the single `bossRound`; only the last entry finishes the match (`isFinalFightRound`) — DESIGN §6.7 |
+| `threeTier` | 三阶远征 only: `true` | switches on the second merge rung 3 精锐 `_b` → 王牌 `_c` (`gamedata.threeTier`); absent elsewhere, keeping the official elite terminal — DESIGN §6.7 |
+| `expedition` | 三阶远征 only: `{"caps":[30,60,99],"maxRound":99,"bossFirst":14,"bossEvery":7}` | the caps the room picks from at match start (`room.setExpeditionCap` → `gamedata.expeditionCap`) |
+| `poolCopies` | 三阶远征 only: `{"tiers":{…},"overrides":{…}}` | this mode's own shared-pool table, consulted before `economy.poolCopies` / `poolCopiesOverrides` per key (`gamedata.poolCopies`). Every tier ≥ 9, because one 3 × 3 ladder spends 9 copies of a base |
 | `upgradePrices` | `[5,8,11,12,13]` | base price L1→2 … L5→6 (−1 per round start, floor 0, reset after upgrade) |
 | `maxShopLevel` | `6` | |
 | `shopSlots[level]` | `{"1":{"chess":3,"item":1},…}` | operator + item slots per shop level |

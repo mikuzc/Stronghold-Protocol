@@ -79,6 +79,8 @@ export function makeMatch(o = {}) {
     verify: o.verify ?? 'off',
     headlessSliceMs: o.headlessSliceMs,
     aiPicksLast: o.aiPicksLast,
+    // 三阶远征 round cap (the deviation): only a 三阶远征 mode reads it (gamedata.expeditionCap)
+    expeditionCap: o.expeditionCap,
   });
   const m = h.m;
   if (m.clientCombat && o.clients !== false) {

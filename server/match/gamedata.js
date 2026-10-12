@@ -90,12 +90,14 @@ export class GameData {
   /**
    * @param {Readonly<Record<string, any>>} data server/data.js getData() (may be partial)
    * @param {string} modeId e.g. 'mode_multi_hard'
+   * @param {{ expeditionCap?: number }} [opts] room options: the 三阶远征 round cap picked at match start
    */
-  constructor(data, modeId) {
+  constructor(data, modeId, opts = {}) {
     this.raw = data && typeof data === 'object' ? data : {};
     this.config = getConfig(this.raw) || {};
     this.modeId = modeId;
     this.mode = getMode(modeId, this.raw) || {};
+    this.opts = opts && typeof opts === 'object' ? opts : {};
     this.economy = this.config.economy && typeof this.config.economy === 'object' ? this.config.economy : {};
     const chess = this.raw.chess && typeof this.raw.chess === 'object' ? this.raw.chess : {};
     this._chess = chess;
@@ -215,10 +217,10 @@ export class GameData {
     return rec;
   }
 
-  /** Normal (base) chess id of a chess id (golden → base). */
+  /** Normal (base) chess id of a chess id (golden → base; both `_b` and the `_c` 王牌 point at the same `_a`). */
   baseIdOf(id) {
     const c = this.chess(id);
-    if (!c) return typeof id === 'string' ? id.replace(/_b$/, '_a') : null;
+    if (!c) return typeof id === 'string' ? id.replace(/_[bc]$/, '_a') : null;
     return c.baseId || (c.isGolden ? id.replace(/_b$/, '_a') : id);
   }
 
@@ -230,6 +232,44 @@ export class GameData {
   }
 
   isGolden(id) { const c = this.chess(id) || this.item(id); return !!(c && c.isGolden); }
+
+  /** True when `id` is the third form (王牌 `_c`) — the deviation `threeTier` modes switch on. */
+  isAce(id) { const c = this.chess(id); return !!(c && c.isAce); }
+
+  /**
+   * The three-tier ladder (三阶远征), a deliberate deviation — the official mode has exactly two forms (`_a` 普通 /
+   * `_b` 精锐) and the elite is terminal. When the mode sets `threeTier`, a second merge rung appears:
+   *   3× `_a` → `_b` (the official merge, unchanged) then 3× `_b` → `_c` (王牌).
+   * Every method below answers exactly as before when the flag is off, so the official mode is untouched.
+   */
+  get threeTier() { return this.mode.threeTier === true; }
+
+  /**
+   * The 王牌 (`_c`) of a chess id's family, or null. The link lives on the ELITE (`_b.aceChessId`, written by
+   * tools/build-data.mjs injectAceForms), so it is reached through goldenIdOf. Null outside a `threeTier` mode — the
+   * ace is `visible: false` and never enters the official pool, so the official ladder must not see it either.
+   */
+  aceIdOf(id) {
+    if (!this.threeTier) return null;
+    const gid = this.goldenIdOf(id);
+    const g = gid ? this.chess(gid) : null;
+    const ace = g && typeof g.aceChessId === 'string' ? g.aceChessId : null;
+    return ace && this.chess(ace) ? ace : null;
+  }
+
+  /**
+   * The form a merge of `id` produces: 普通 → 精锐 always, 精锐 → 王牌 only in a `threeTier` mode. Null = terminal
+   * (the official elite, every ace, an unknown id, a DIY slot without an ace).
+   */
+  mergeTargetOf(id) {
+    const c = this.chess(id);
+    if (!c || c.isAce) return null;
+    if (c.isGolden) return this.aceIdOf(id);
+    return this.goldenIdOf(id);
+  }
+
+  /** The form id a gain of `id` merges FROM — `id` itself when it has a merge, else null (terminal). */
+  mergeFormOf(id) { return this.mergeCount(id) > 1 && this.mergeTargetOf(id) ? id : null; }
 
   tierOf(id) {
     const c = this.chess(id) || this.item(id);
@@ -294,10 +334,14 @@ export class GameData {
 
   /** Copies of a base chess in the shared pool. */
   poolCopies(baseId) {
-    const ov = this.economy.poolCopiesOverrides;
+    // A 三阶远征 mode replaces both tables for itself (mode.poolCopies): its second merge rung needs 9 copies of one
+    // base, which the official 5阶 8 / 6阶 5 cannot supply. Per key, so an operator the mode does not list and the
+    // official mode entirely keep the global values byte-for-byte.
+    const mp = this.mode.poolCopies && typeof this.mode.poolCopies === 'object' ? this.mode.poolCopies : null;
     const tier = this.tierOf(baseId);
-    const pc = this.economy.poolCopies;
-    const v = ov && Number.isInteger(ov[baseId]) && ov[baseId] >= 0 ? ov[baseId] : pc?.[tier];
+    const pc = (mp && mp.tiers && typeof mp.tiers === 'object' ? mp.tiers : null) || this.economy.poolCopies;
+    const ovOf = (o) => (o && Number.isInteger(o[baseId]) && o[baseId] >= 0 ? o[baseId] : null);
+    const v = ovOf(mp && mp.overrides) ?? ovOf(this.economy.poolCopiesOverrides) ?? pc?.[tier];
     const base = Number.isInteger(v) && v >= 0 ? v : (DEFAULTS.poolCopies[tier] ?? 10);
     // The measured doubled pool is shared by the whole co-op team, independent of team size. DIY is private stock.
     const multiplier = this.isSolo || this.chess(baseId)?.isDiy ? 1 : posIntOr(this.economy.coopPoolMultiplier, 1);
@@ -312,26 +356,94 @@ export class GameData {
     return Number.isInteger(count) && count >= 0 ? count : null;
   }
 
-  /** Copies needed to merge (0 = never merges: golden chess). */
+  /**
+   * Copies of `id`'s own form needed to merge it into its next form (0 = it never merges). The 普通 `_a` rung is the
+   * official one; the 精锐 `_b` rung exists only in a `threeTier` mode (三阶远征), where three elites become the 王牌
+   * `_c`; the ace itself and every unknown id never merge, and outside a `threeTier` mode the official elite is
+   * terminal exactly as before.
+   */
   mergeCount(id) {
     const c = this.chess(id);
-    if (!c || c.isGolden) return 0;
-    if (Number.isInteger(c.upgradeNum) && c.upgradeNum > 0) return c.upgradeNum;
+    if (!c || c.isAce) return 0;
     const ov = this.economy.mergeCountOverrides;
+    if (c.isGolden) {
+      if (!this.aceIdOf(id)) return 0;
+      const base = this.baseIdOf(id);
+      if (ov && Number.isInteger(ov[base])) return ov[base];
+      return posIntOr(this.economy.mergeCount, DEFAULTS.mergeCount);
+    }
+    if (Number.isInteger(c.upgradeNum) && c.upgradeNum > 0) return c.upgradeNum;
     if (ov && Number.isInteger(ov[id])) return ov[id];
     return posIntOr(this.economy.mergeCount, DEFAULTS.mergeCount);
+  }
+
+  /**
+   * The most shared-pool copies one piece of `id` may hold: a normal 1, an elite `goldenCopies`, and the 王牌 every
+   * copy of its whole ladder (the elite rung's need × `goldenCopies` — 9 for the official 3 × 3). Pool copies are
+   * conserved: an ace gives all of them back when it is destroyed, exactly as an elite gives back its 3.
+   */
+  maxPoolCopies(id) {
+    const c = this.chess(id);
+    if (!c) return 1;
+    if (c.isAce) return this.goldenCopies * Math.max(1, this.mergeCount(this.baseIdOf(id)));
+    return c.isGolden ? this.goldenCopies : 1;
   }
 
   // ---- mode -----------------------------------------------------------------------------------------
 
   get isSolo() { return this.mode.type === 'SINGLE' || /^mode_single_/.test(this.modeId || ''); }
   get difficulty() { return this.mode.difficulty || (this.modeId ? String(this.modeId).split('_').pop().toUpperCase() : 'NORMAL'); }
+  /** The 三阶远征 round cap the room picked (30 / 60 / 99), or null outside such a mode. */
+  get expeditionCap() {
+    const e = this.mode.expedition;
+    const caps = e && Array.isArray(e.caps) ? e.caps.filter((n) => Number.isInteger(n) && n > 0) : [];
+    if (!caps.length) return null;
+    const sel = Number.isInteger(this.opts.expeditionCap) ? this.opts.expeditionCap : this.mode.lastRound;
+    return caps.includes(sel) ? sel : (caps.includes(this.mode.lastRound) ? this.mode.lastRound : caps[caps.length - 1]);
+  }
+
   get lastRound() {
+    const cap = this.expeditionCap;
+    if (cap !== null) return cap;
     if (Number.isInteger(this.mode.lastRound) && this.mode.lastRound > 0) return this.mode.lastRound;
     return this.modeId === 'mode_single_funny' ? 9 : 14;
   }
-  get bossRound() { return Number.isInteger(this.mode.bossRound) && this.mode.bossRound > 0 ? this.mode.bossRound : this.lastRound; }
+  /**
+   * The boss rounds of the mode, ascending. The official mode carries the single scalar `bossRound`; a 三阶远征 mode
+   * writes `bossRounds` (R14 and then every 7 rounds) because it holds several 最终攻势 in one match.
+   */
+  get bossRounds() {
+    const arr = Array.isArray(this.mode.bossRounds) ? this.mode.bossRounds.filter((n) => Number.isInteger(n) && n > 0) : [];
+    if (arr.length) {
+      const cap = this.expeditionCap;
+      const kept = cap === null ? arr : arr.filter((n) => n <= cap);
+      return [...new Set(kept.length ? kept : arr)].sort((a, b) => a - b);
+    }
+    const b = Number.isInteger(this.mode.bossRound) && this.mode.bossRound > 0 ? this.mode.bossRound : this.lastRound;
+    return b > 0 ? [b] : [];
+  }
+
+  /** The LAST boss round — the one whose 最终攻势 ends the match. Every scalar consumer keeps its official meaning. */
+  get bossRound() { const r = this.bossRounds; return r.length ? r[r.length - 1] : this.lastRound; }
+
   get hiddenRound() { return Number.isInteger(this.mode.hiddenRound) && this.mode.hiddenRound > 0 ? this.mode.hiddenRound : null; }
+
+  /** True for a normal 最终攻势 round (the hidden round is never one of these). */
+  isBossRound(r) { return this.bossRounds.includes(r); }
+
+  /** True for every round played as a boss fight: a 最终攻势 or the 隐秘核心. */
+  isBossFight(r) { return this.isBossRound(r) || (this.hiddenRound !== null && r === this.hiddenRound); }
+
+  /**
+   * True for the round(s) whose end FINISHES the match. The last boss round always does; the 隐秘核心 does when it
+   * follows that boss round (the official shape), and does NOT in a mode that plays on past it (三阶远征 keeps the
+   * hidden core after R14 and then resumes to R16, so only its final boss round ends the run).
+   */
+  isFinalFightRound(r) {
+    if (r === this.bossRound) return true;
+    const h = this.hiddenRound;
+    return h !== null && h > this.bossRound && r === h;
+  }
   get maxShopLevel() { return posIntOr(this.mode.maxShopLevel, DEFAULTS.maxShopLevel); }
 
   roundCfg(r) {

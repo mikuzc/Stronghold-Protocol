@@ -542,6 +542,7 @@ export class MatchBoss {
     this.overtimeAt = 0;
     this.markPublic();
     this.runner = null;
+    const endsMatch = this.gd.isFinalFightRound(this.round);
     if (!hidden) {
       const eligible = victory && !!this.hiddenBossId && hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp });
       this.later(this.scaled(DELAYS.SETTLE), () => {
@@ -550,12 +551,28 @@ export class MatchBoss {
           this.bossPool = null;
           this.tickerText('隐秘核心已解锁', FLOW_TICKER_PRIORITY);
           this.startRound(this.gd.hiddenRound);
+        } else if (!endsMatch) {
+          this._resumeAfterBoss(victory);
         } else {
           this.finish({ victory, reason: victory ? 'victory' : 'defeat' });
         }
       });
+    } else if (!endsMatch) {
+      this.later(this.scaled(DELAYS.SETTLE), () => this._resumeAfterBoss(victory));
     } else {
       this.later(this.scaled(DELAYS.SETTLE), () => this.finish({ victory: true, hiddenCleared: victory, reason: 'victory' }));
     }
+  }
+
+  /**
+   * A boss round that does NOT end the match (三阶远征: R14 and then every 7 rounds): drop this fight's pool and go on
+   * to the next round, whatever the fight's outcome — a boss the team failed to kill has already drained their LP
+   * through the ordinary 最终攻势 rules, and its fields end when the pool is cleared or the team's LP runs out. A team
+   * the fight eliminated ends the run as always.
+   */
+  _resumeAfterBoss() {
+    this.bossPool = null;
+    if (!this.alivePlayers().length) { this.finish({ victory: false, reason: 'eliminated' }); return; }
+    this.startRound(this.round + 1);
   }
 }

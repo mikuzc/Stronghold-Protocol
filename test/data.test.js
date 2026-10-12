@@ -256,7 +256,9 @@ test('waves: every template resolves spawns, routes and enemies', () => {
 
 test('config: modes, rounds and templates', () => {
   const inScope = Object.values(config.modes).filter((m) => m.inScope);
-  assert.equal(inScope.length, 8);
+  // 8 official (single/multi × FUNNY/NORMAL/HARD/ABYSS) + the 2 三阶远征 modes (a deliberate deviation)
+  assert.equal(inScope.length, 10);
+  assert.equal(inScope.filter((m) => m.threeTier === true).length, 2);
   for (const m of Object.values(config.modes)) {
     for (const [r, rd] of Object.entries(m.rounds)) {
       const tpls = rd.template ? [rd.template] : Object.values(rd.bossTemplates || {});
@@ -285,6 +287,23 @@ test('config: modes, rounds and templates', () => {
     assert.equal(M[id].hiddenRound, 15, id);
   }
   assert.deepEqual(M.mode_multi_hard.spRounds, [3, 9, 11]);
+  // 三阶远征 (a deliberate deviation, docs/design/match.md): the third form's second merge rung, the pool every base
+  // needs to walk the whole ladder (3 × 3 = 9), the selectable cap, and the boss cadence "R14 and then every 7".
+  for (const id of ['mode_single_expedition', 'mode_multi_expedition']) {
+    const e = M[id];
+    assert.equal(e.threeTier, true, id);
+    assert.equal(e.hiddenRound, null, id);
+    assert.deepEqual(e.expedition.caps, [30, 60, 99], id);
+    assert.equal(e.lastRound, 30, `${id}: the default cap`);
+    assert.ok(e.bossRounds.includes(14) && e.bossRounds.includes(14 + 7), id);
+    for (const c of e.expedition.caps) assert.ok(e.bossRounds.includes(c), `${id}: the cap round ${c} must be a 最终攻势`);
+    for (const [t, n] of Object.entries(e.poolCopies.tiers)) assert.ok(n >= 9, `${id}: tier ${t} carries ${n} copies, under the 9 a ladder needs`);
+    for (const [, n] of Object.entries(e.poolCopies.overrides)) assert.ok(n >= 9, `${id}: a per-operator override carries ${n} copies`);
+    // the official modes must not have picked any of it up
+    assert.equal(M.mode_single_normal.threeTier, undefined);
+    assert.equal(M.mode_single_normal.bossRounds, undefined);
+    assert.equal(M.mode_single_normal.poolCopies, undefined);
+  }
   assert.deepEqual(M.mode_multi_normal.upgradePrices, [5, 8, 11, 12, 13]);
   assert.equal(config.economy.income[1], 4);
   assert.equal(config.economy.income[3], 6);

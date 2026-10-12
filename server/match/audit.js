@@ -247,8 +247,13 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
     // transformation destroyed its carrier before the gain, so that freed tile is no copy's). A merge never grows the
     // deploy count. Every owned normal copy is consumed (merges are immediate).
     wrap(ps, '_mergeChess', function (orig, baseId, incoming) {
+      // the merge's rung, exactly as _mergeChess derives it: the incoming copy's OWN form (`_a` → 精锐, and in a
+      // `threeTier` mode `_b` → 王牌). `baseId` is the pool key, always the normal `_a`. `ps.gd` may be unset (as at
+      // the placeClass read below), hence the fallback.
+      const g = ps.gd || gd;
+      const fromId = incoming && g.mergeTargetOf(incoming.id) ? incoming.id : baseId;
       const tiles = new Map(); // tile key → facing of the copy standing there
-      for (const [k, p] of ps.board) if (p.kind === 'chess' && !gd.isGolden(p.id) && gd.baseIdOf(p.id) === baseId) tiles.set(k, pieceDir(p));
+      for (const [k, p] of ps.board) if (p.kind === 'chess' && p.id === fromId) tiles.set(k, pieceDir(p));
       const deployed0 = ps.deployCount;
       const elite = orig(baseId, incoming);
       if (elite) check('merge', () => {
@@ -327,7 +332,7 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
     check('round start phase', () => {
       if (m.phase !== PHASE.ROUND_START) return;
       expectDeadline(2, 'ROUND_START', { silentSolo: true });
-      const isBoss = rr === gd.bossRound || rr === gd.hiddenRound;
+      const isBoss = gd.isBossFight(rr);
       if (isBoss ? !m.bossWaves : !m.wave) fail('round without its wave');
     });
     return res;
