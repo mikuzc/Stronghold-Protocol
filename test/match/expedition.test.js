@@ -284,6 +284,32 @@ test('三阶远征: one tier-6 item draft follows every 最终攻势, on the ord
   assert.equal(DATA.choices.schedule.mode_single_normal.spRounds.includes(15), false, 'the official cadence is unchanged');
 });
 
+test('人事部文档: the effect AND the card face differ per mode, and each is correct on its side', async () => {
+  const { store } = await import('../../public/js/store.js');
+  const { itemDescOverride } = await import('../../public/js/ui/shopBar.js');
+  const ITEM = 'chess_item_6_08_e_a';
+  // data: only the two 三阶远征 modes override the card face; every official mode keeps the official text
+  const expOv = DATA.config.modes.mode_single_expedition.itemDescOverrides;
+  assert.ok(expOv && typeof expOv[ITEM] === 'string', 'the expedition overrides 人事部文档');
+  assert.deepEqual(DATA.config.modes.mode_multi_expedition.itemDescOverrides, expOv);
+  for (const id of ['mode_single_normal', 'mode_single_hard', 'mode_multi_normal', 'mode_training_1']) {
+    assert.equal(DATA.config.modes[id].itemDescOverrides, undefined, `${id} keeps the official card face`);
+  }
+  assert.match(DATA.items[ITEM].desc, /9/, 'the official record still says 9');
+  // client: the override wins only while the frame carries it
+  const before = store.get();
+  try {
+    assert.equal(itemDescOverride(ITEM), null, 'no match → the official text');
+    store.set({ match: { private: { itemDesc: expOv } } });
+    assert.equal(itemDescOverride(ITEM), expOv[ITEM], 'the 三阶远征 text wins');
+    assert.equal(itemDescOverride('chess_item_1_01_e_a'), null, 'an item the mode does not override keeps its own text');
+    store.set({ match: { private: {} } });
+    assert.equal(itemDescOverride(ITEM), null, 'an official frame carries no itemDesc');
+  } finally {
+    store.set({ match: before.match ?? null });
+  }
+});
+
 test('the official mode keeps its two forms: 9 普通 give three 精锐 and never a 王牌', () => {
   const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', seed: 11 }).start();
   h.toPrep(1);

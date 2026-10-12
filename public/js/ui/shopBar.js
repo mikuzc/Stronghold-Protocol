@@ -28,6 +28,20 @@ import { useEffect, useState } from '../../vendor/hooks.module.js';
 import { html, Icon, HexBadge, TierChip, Tooltip, MicroLabel } from './components.js';
 import { Img, BondGlyph, CoinGlyph, GIcon, RichText } from './gameComponents.js';
 import { priceTone, mergeProgress, mergeTarget, shopBlockReason, chessLoadout, offerHeader, briefingBondTip, ownStandIn, standInLoadout, standInLabel, standInTip, standInForText, ownDiyRecord, diyGetter } from './gameLogic.js';
+import { store } from '../store.js';
+
+/**
+ * Card-face text a mode overrides for an item (`m.private.itemDesc`, config.modes[m].itemDescOverrides — 三阶远征's
+ * 人事部文档, DESIGN §6.7). A plain `store.get()` read, not `useStore`: these cards are also called directly (tests, the
+ * reward overlay) with no hook context, and the text is fixed for the whole match, so it needs no subscription.
+ * @param {string} itemId
+ * @returns {string|null}
+ */
+export function itemDescOverride(itemId) {
+  const map = store.get()?.match?.private?.itemDesc;
+  const v = map && typeof map === 'object' ? map[itemId] : null;
+  return typeof v === 'string' && v ? v : null;
+}
 import { chessPortraitUrl, itemIconUrl, profIconUrl, uiUrl, skillIconUrl, skillRecordIconUrl, moduleTypeIconUrl } from './assetUrls.js';
 import { data } from '../data.js';
 import { hotkeyLabelOf } from './settings.js';
@@ -157,6 +171,7 @@ function SkillBadge({ chess, lo, standIn = false }) {
  */
 export function ItemCard({ slot, idx, frozen = false, reason = null, free = false, armed = false, onTap = null, onBuy, onDetail }) {
   const it = data.lookup('items', slot.id);
+  const itemDesc = itemDescOverride(slot.id);
   const m = data.get('assets');
   const disabled = !!reason;
   const tap = () => { if (onTap) onTap(idx); else if (!disabled) onBuy(idx); else onDetail(slot.id, 'item'); };
@@ -172,7 +187,7 @@ export function ItemCard({ slot, idx, frozen = false, reason = null, free = fals
     <span class="scard__itemart"><${Img} src=${itemIconUrl(m, it)} fallback=${html`<${GIcon} name="bolt" />`} /></span>
     <span class="scard__body">
       <span class="scard__name">${it?.name || slot.id}</span>
-      <span class="scard__idesc"><${RichText} text=${it?.descRaw || it?.desc || ''} /></span>
+      <span class="scard__idesc"><${RichText} text=${itemDesc || it?.descRaw || it?.desc || ''} /></span>
     </span>
     ${frozen ? html`<span class="scard__ice" aria-hidden="true"><${Icon} name="snow" /></span>` : null}
     ${armed ? html`<${ArmedTag} reason=${reason} free=${free} />` : null}

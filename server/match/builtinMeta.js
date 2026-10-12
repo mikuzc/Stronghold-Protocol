@@ -125,10 +125,14 @@ const ITEM_HANDLERS = {
     onEquip(ctx, ev) { ctx.addPendingFunds(int(paramsOf(ctx, ev.item).count, 2)); },
   },
   equip_destory_deployment_cnt_change: {
-    // 人事部文档 (a deliberate deviation, the maintainer's decision): +1 deploy slot per copy with NO ceiling, instead of
-    // the official "最大可部署人数变为9". `addDeployCap` is additive and unclamped (effectsMeta), so copies stack forever
-    // — `setDeployCapAtLeast` would floor it at `count` AND clamp the result at 12, which is what this replaced.
-    onEquip(ctx) { ctx.addDeployCap(1); },
+    // 人事部文档. OFFICIAL: the deploy cap BECOMES `count` (9) and a second copy adds nothing. 三阶远征 only (a
+    // deliberate deviation, the maintainer's decision): +1 per copy with NO ceiling, so copies stack forever —
+    // `addDeployCap` is additive and unclamped, while `setDeployCapAtLeast` floors it at 9 AND clamps the result at 12.
+    // The card-face text follows the same split (config.modes[m].itemDescOverrides → m.private.itemDesc).
+    onEquip(ctx, ev) {
+      if (ctx.gd.threeTier) { ctx.addDeployCap(1); return; }
+      ctx.setDeployCapAtLeast(int(paramsOf(ctx, ev.item).count, 9));
+    },
   },
   use_equip_upgrade_char: {
     onEquip(ctx, ev) {

@@ -145,8 +145,19 @@ generated modes `mode_single_expedition` / `mode_multi_expedition` add a third:
   (`this.round === this.gd.bossRound`); without the gate the R14 win would jump straight to the final boss and skip
   R15–R29. The official mode has exactly one boss round, so the gate is that round and nothing changes there. Rounds 31
   and 100 carry the official hidden pool (`hiddenBossWeights`) and its templates (`act1autochess_h08_*`).
-- **Not in scope.** The 机变 offer table (keyed by modeId and carrying no 三阶远征 entry, so R13+ take
-  `choices.js scheduleFor`'s documented fallback).
+- **人事部文档 splits by mode.** In every OFFICIAL mode the card keeps its official behaviour — the deploy cap becomes
+  9 (`setDeployCapAtLeast(count)`, clamped at 12) and a second copy adds nothing — and its official card face. In 三阶
+  远征 only it becomes `addDeployCap(1)`: **+1 per copy with no ceiling**, so copies stack forever, and the card face is
+  replaced by `config.modes[m].itemDescOverrides` → the private frame's `itemDesc`, which `shopBar.js ItemCard` and
+  `detailPanel.js ItemRow` prefer over the official text (read through `itemDescOverride`, a plain `store.get()` — these
+  cards are also called directly with no hook context). `builtinMeta.js equip_destory_deployment_cnt_change` branches on
+  `ctx.gd.threeTier`.
+- **A tier-6 item draft follows every 最终攻势.** `EXPEDITION_DRAFT_ROUNDS` is one round after each boss, minus any
+  whose successor is itself a boss round or the 隐秘核心 (a draft REPLACES the next round's prep, so it may never land on
+  one). `data/choices.json` carries a matching `schedule[modeId]` entry — the `supply` family with `supplyTiers: [6, 6]`,
+  so the ordinary 机变 queue (`choices.js scheduleFor` → `generateDraft`, PHASE.SP_DRAFT) hands out tier-6 equipment with
+  no engine change.
+- **Not in scope.** Nothing: the 机变 offer table now carries a 三阶远征 entry of its own.
 
 Every official mode is untouched: `threeTier`, `bossRounds`, `poolCopies` and `expedition` are written only on the two
 new modes, the official entries of `data/config.json` are byte-identical, and the golden corpus does not move (287/287).

@@ -720,8 +720,8 @@ test('lendItemEffects (萨尔贡 × 娜仁图亚): tier ≤ V battle effects len
 // ---------------------------------------------------------------------------------------------------------------
 // prep side
 
-function setup({ mode = 'solo', humans = 1, seed = 41 } = {}) {
-  const h = makeMatch({ mode, humans, seed, registry: REG, fake: true }).start();
+function setup({ mode = 'solo', humans = 1, seed = 41, difficulty = 'NORMAL' } = {}) {
+  const h = makeMatch({ mode, humans, seed, difficulty, registry: REG, fake: true }).start();
   h.toPrep(1);
   const m = h.m;
   for (const ps of m.players.values()) {
@@ -1101,17 +1101,28 @@ test('突变细胞: a DEPLOYED carrier leaves the field — the new operator is 
   assert.ok(handIds(ps, 'item').includes(A('5_08')), 'the cell back in the hand');
 });
 
-test('人事部文档: +1 deploy slot per copy, stacking with NO ceiling (a deliberate deviation)', () => {
+test('人事部文档: official — the cap becomes 9 and a second copy adds nothing', () => {
   const { m, ps, equip } = setup();
+  assert.equal(m.gd.threeTier, false, 'the official mode');
   const t = give(m, ps, plain((c) => c.tier === 1)[0], 'hand');
   assert.equal(ps.deployCap, 8);
   assert.deepEqual(equip(giveItem(m, ps, A('6_08')), t), OK);
   assert.equal(ps.deployCap, 9);
-  // the official card sets it to 9 and a second copy adds nothing; the deviation makes every copy +1 forever
   assert.deepEqual(equip(giveItem(m, ps, A('6_08')), t), OK);
-  assert.equal(ps.deployCap, 10);
-  assert.deepEqual(equip(giveItem(m, ps, A('6_08')), t), OK);
-  assert.equal(ps.deployCap, 11);
+  assert.equal(ps.deployCap, 9, 'the official card SETS it to 9; a second copy does nothing');
+  cover(A('6_08'), B('6_08'));
+});
+
+test('人事部文档: 三阶远征 — +1 per copy, stacking past the official 12 clamp (a deliberate deviation)', () => {
+  const { m, ps, equip } = setup({ difficulty: 'EXPEDITION' });
+  assert.equal(m.gd.threeTier, true, 'the 三阶远征 mode');
+  const t = give(m, ps, plain((c) => c.tier === 1)[0], 'hand');
+  assert.equal(ps.deployCap, 8);
+  // 5 copies: past 12, which is where the official `setDeployCapAtLeast` would stop
+  for (const want of [9, 10, 11, 12, 13]) {
+    assert.deepEqual(equip(giveItem(m, ps, A('6_08')), t), OK);
+    assert.equal(ps.deployCap, want, `after ${want - 8} copy/copies`);
+  }
   cover(A('6_08'), B('6_08'));
 });
 

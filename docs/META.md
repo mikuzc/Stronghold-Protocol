@@ -428,7 +428,7 @@ Writes (all validated, never throw on bad input, never make funds / pools negati
 | `offerItems(ids, { tier, label })` | the same for items (slots of kind `'item'`, drawn as item cards) — 凯瑟琳 定向投放 style (player report #6 after 0.1.0) |
 | `triggerGarrisons(uid, eventType, { asUid })` | run another owned chess's 特质 of that eventType now (铃兰 "触发…的获得时效果"); 投资人 still multiplies SERVER_GAIN; SERVER_PRICE cannot be triggered; depth-capped |
 | `setShopSlot(i, { kind, id, price?, frozen? } \| null)` | rewrite a shop slot (special refreshes) |
-| `addDeployCap(n)` / `setDeployCapAtLeast(n)` | deploy cap (+effects). 人事部文档 uses `addDeployCap(1)` — **+1 per copy, uncapped** (a deliberate deviation; the official card sets it to 9 via `setDeployCapAtLeast`, which also clamps at 12, and a second copy does nothing) |
+| `addDeployCap(n)` / `setDeployCapAtLeast(n)` | deploy cap (+effects). 人事部文档 splits by mode: **official** = `setDeployCapAtLeast(count)` (the cap BECOMES 9, clamped at 12, a second copy adds nothing); **三阶远征 only** = `addDeployCap(1)`, i.e. +1 per copy with no ceiling (a deliberate deviation — its card face follows the same split via `config.modes[m].itemDescOverrides` → `m.private.itemDesc`) |
 | `setBondCountBonus(bondId, n)` | extra member count for a bond |
 | `setDeviceActive(alias, on)` / `setTileOverride(r, c, 'melee'\|'ranged'\|'none')` | terrain changes of this player's board (legality + battle input `deviceOverrides`) |
 | `addEffect(ref)` / `removeEffect(id)` / `setEffectCounter(id, v)` | EffectRefs `{ id, key?, name, desc, iconKind, iconId, counter?, battle=true, params?, data?, hidden? }` — shown in `m.private.effects`, passed to battles as `playerEffects` when `battle` |
