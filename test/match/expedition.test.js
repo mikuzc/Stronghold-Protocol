@@ -259,6 +259,31 @@ test('the client merge helpers read the 王牌 rung only in a threeTier match', 
   assert.equal(typeof on.threeTier, 'boolean');
 });
 
+test('三阶远征: one tier-6 item draft follows every 最终攻势, on the ordinary 机变 flow', () => {
+  for (const [modeId, solo] of [['mode_single_expedition', true], ['mode_multi_expedition', false]]) {
+    const mode = DATA.config.modes[modeId];
+    const sch = DATA.choices.schedule[modeId];
+    assert.ok(sch, `${modeId}: a choices schedule`);
+    // the two must agree (the engine enters the draft on config.spRounds, the cards come from the schedule)
+    assert.deepEqual(sch.spRounds, mode.spRounds, `${modeId}: spRounds in sync`);
+    assert.ok(sch.spRounds.length > 0);
+    for (const r of sch.spRounds) {
+      // right after a 最终攻势, and never ON a boss or hidden round (a draft would replace that round's prep)
+      assert.equal(mode.rounds[String(r - 1)].isBoss, true, `${modeId}: R${r} follows a boss`);
+      assert.equal(mode.rounds[String(r)].isBoss, false, `${modeId}: R${r} is not a boss round`);
+      assert.equal(mode.bossRounds.includes(r), false, `${modeId}: R${r} is not a 最终攻势`);
+      assert.equal(mode.expedition && mode.rounds[String(r)].isHidden, false, `${modeId}: R${r} is not the 隐秘核心`);
+      const spec = sch.rounds[String(r)];
+      assert.deepEqual(spec.families, [{ family: 'supply', weight: 100 }], `${modeId}: R${r} is a 道具补给 draft`);
+      assert.equal(spec.cards, solo ? 3 : 6, `${modeId}: R${r} card count`);
+      assert.deepEqual(spec.supplyTiers, [6, 6], `${modeId}: R${r} draws TIER-6 items`);
+    }
+    // the official modes keep their own cadence untouched
+    assert.deepEqual(DATA.choices.schedule.mode_single_normal.spRounds, DATA.config.modes.mode_single_normal.spRounds);
+  }
+  assert.equal(DATA.choices.schedule.mode_single_normal.spRounds.includes(15), false, 'the official cadence is unchanged');
+});
+
 test('the official mode keeps its two forms: 9 普通 give three 精锐 and never a 王牌', () => {
   const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', seed: 11 }).start();
   h.toPrep(1);

@@ -3573,6 +3573,22 @@ function buildChoices(ctx, effects, items, chess) {
     schedule[modeId] = { spRounds: sp, rounds: m };
   }
 
+  // 三阶远征 (a deliberate deviation, DESIGN §6.7): one 道具补给 draft of TIER-6 items right after every 最终攻势, run
+  // through the ordinary 机变 flow — server/match/choices.js scheduleFor reads this entry and generateDraft's `supply`
+  // family draws normal EQUIP items from `supplyTiers`, so no engine code is needed. `spRounds` must equal the mode's
+  // own config `spRounds` (the two are asserted to agree).
+  for (const [expModeId, expSolo] of [['mode_single_expedition', true], ['mode_multi_expedition', false]]) {
+    const expRounds = {};
+    for (const r of EXPEDITION_DRAFT_ROUNDS) {
+      expRounds[r] = {
+        families: [{ family: 'supply', weight: 100 }], cards: expSolo ? 3 : 6,
+        supplyTiers: [6, 6], bountyDraft: bountyDraftOf(r),
+        events: { bounty: [], supply: eventsOf('supply', (e) => !e.training && e.solo === expSolo), shop: [], tactic: [] },
+      };
+    }
+    schedule[expModeId] = { spRounds: [...EXPEDITION_DRAFT_ROUNDS], rounds: expRounds };
+  }
+
   return {
     events,
     families: {
@@ -3693,6 +3709,12 @@ const EXPEDITION_BOSS_ROUNDS = (() => {
 })();
 // The 隐秘核心 (the FINAL boss): one round after each cap's own last round — R31 for the 30 cap, R100 for 无尽/无限.
 const EXPEDITION_HIDDEN_ROUNDS = EXPEDITION_CAP_ROUNDS.map((r) => r + 1);
+// The 机变 draft rounds: ONE right after every 最终攻势 (三阶远征 only). A round whose successor is itself a boss round
+// (R98 → R99, the 无尽 cap) or the 隐秘核心 (R30 → R31, R99 → R100) is skipped — the draft replaces the next round's
+// prep (MatchPhases.afterRoundStart → enterSpDraft), so it must never land on a boss round.
+const EXPEDITION_DRAFT_ROUNDS = EXPEDITION_BOSS_ROUNDS
+  .map((r) => r + 1)
+  .filter((r) => !EXPEDITION_HIDDEN_ROUNDS.includes(r) && !EXPEDITION_BOSS_ROUNDS.includes(r));
 
 /**
  * Enemy stat multipliers {atk, hp, speed} of a 三阶远征 round past the official table. The official curve is
@@ -3873,12 +3895,10 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
     }
     // the default cap's round is the mode's `lastRound`; `gamedata.expeditionCap` overrides it per room
     const cap0 = EXPEDITION_CAP_ROUNDS[0];
-    // 机变 drafts: the official cadence through R15, then one in the round before every 最终攻势. The 机变 offer table
-    // is keyed by modeId and has no 三阶远征 entry, so those rounds take server/match/choices.js scheduleFor's
-    // documented fallback (a supply draft) — [ASSUMED: extending the cadence is the maintainer's decision].
-    const spRounds = [...(Array.isArray(src.spRounds) ? src.spRounds.filter((r) => r <= 15) : [])];
-    for (let r = EXPEDITION_BOSS_FIRST - 1; r <= EXPEDITION_MAX_ROUND; r += EXPEDITION_BOSS_EVERY) if (!spRounds.includes(r)) spRounds.push(r);
-    spRounds.sort((a, b) => a - b);
+    // 机变 drafts: the 道具补给 六阶道具自选 that follows EVERY 最终攻势 (EXPEDITION_DRAFT_ROUNDS — one round after each
+    // boss, never on a boss or hidden round). data/choices.json carries the matching schedule entry: a `supply` family
+    // with `supplyTiers: [6, 6]`, i.e. tier-6 equipment.
+    const spRounds = [...EXPEDITION_DRAFT_ROUNDS];
     modes[expId] = {
       ...src,
       modeId: expId, name: '三阶远征', code: 'EXPEDITION', sortId: 90,
@@ -3893,6 +3913,12 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
       ],
       unlockText: null,
       threeTier: true,
+      // Card-face text this mode overrides (client: m.private.itemDesc → shopBar's item card and detailPanel's item
+      // detail). Only 人事部文档: its behaviour here is +1 per copy with no ceiling, so the official 「最大可部署人数变为9」
+      // would be wrong. A deliberate deviation (docs/META.md).
+      itemDescOverrides: {
+        chess_item_6_08_e_a: '装备时销毁。最大可部署人数 +1（可无限叠加，无上限）',
+      },
       expedition: {
         caps: ['30', 'endless', 'sealed'], defaultCap: '30', sealAt: EXPEDITION_SEAL_AT,
         maxRound: EXPEDITION_MAX_ROUND, bossFirst: EXPEDITION_BOSS_FIRST, bossEvery: EXPEDITION_BOSS_EVERY,

@@ -65,6 +65,10 @@ export class PlayerViews {
       // 三阶远征 (DESIGN §6.7): the client's merge helpers read this to know a 精锐 can still become a 王牌, and to draw
       // the third rung's gold-border tile. False in every official mode, where the elite is terminal.
       threeTier: this.gd.threeTier === true,
+      // Card-face text this mode overrides (`config.modes[modeId].itemDescOverrides`): the client's item card and item
+      // detail prefer it over the official desc (三阶远征's 人事部文档). Omitted when the mode overrides nothing.
+      ...(this.gd.mode.itemDescOverrides && typeof this.gd.mode.itemDescOverrides === 'object'
+        ? { itemDesc: this.gd.mode.itemDescOverrides } : {}),
       lp: this.lp,
       funds: this.funds,
       bandId: this.bandId,
