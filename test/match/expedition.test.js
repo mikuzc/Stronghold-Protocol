@@ -8,6 +8,7 @@ import { validateC2S } from '../../shared/protocol.js';
 import { isBossRoundOf, bossRoundShown } from '../../public/js/ui/gameLogic/camera.js';
 import { GameData } from '../../server/match/gamedata.js';
 import { DATA, makeMatch, chessOfTier } from './harness.js';
+import { runFull } from './fullmatchRun.js';
 
 /** A 三阶远征 match at the first round's prep, funds topped up and the bench emptied. */
 function prep(o = {}) {
@@ -176,6 +177,17 @@ test('the 三阶远征 round cap is validated at the wire and is the only accept
   for (const cap of EXPEDITION_CAPS) assert.equal(validateC2S({ t: 'room.setExpeditionCap', cap }), null, `cap ${cap}`);
   for (const bad of [0, 1, 45, 100, -30, '30', null, undefined, 30.5]) {
     assert.notEqual(validateC2S({ t: 'room.setExpeditionCap', cap: bad }), null, `cap ${JSON.stringify(bad)} rejected`);
+  }
+});
+
+test('三阶远征 end to end: a whole match runs through R30 with the real sim, zero errors, invariants at every phase', () => {
+  // Boosted LP so the run is not cut short by ordinary leaks — the point is the ROUND LOOP: the intermediate 最终攻势
+  // at R14 / R21 / R28 must each resume to the next round instead of finishing the match. roundsPassed >= 29 is that
+  // evidence (a defeat in the R14 boss would report 13).
+  for (const seed of [1, 2]) {
+    const { res } = runFull({ mode: 'solo', difficulty: 'EXPEDITION', humans: 1, bots: 0, seed, boostLp: 4000, expeditionCap: 30 });
+    assert.ok(res, `seed ${seed}: the match ended`);
+    assert.ok(res.roundsPassed >= 29, `seed ${seed}: reached the final 最终攻势 (roundsPassed ${res.roundsPassed})`);
   }
 });
 

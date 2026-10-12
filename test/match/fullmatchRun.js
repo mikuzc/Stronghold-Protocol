@@ -15,8 +15,8 @@ export function reportSimIssues() {
   if (simIssues.size) console.log(`sim/content errors seen during full matches (not match-engine errors):\n${[...simIssues].slice(0, 20).map((x) => '  ' + x).join('\n')}`);
 }
 
-export function runFull({ mode, difficulty, humans, bots, seed, boostLp = null, clientCombat = true, pace = 'instant' }) {
-  const h = makeMatch({ mode, difficulty, humans, bots, seed, captureFrames: false, checkFrames: true, clientCombat, pace });
+export function runFull({ mode, difficulty, humans, bots, seed, boostLp = null, clientCombat = true, pace = 'instant', expeditionCap = null }) {
+  const h = makeMatch({ mode, difficulty, humans, bots, seed, captureFrames: false, checkFrames: true, clientCombat, pace, expeditionCap });
   h.autoHumans();
   const m = h.m;
   m.start();
